@@ -21,14 +21,17 @@ import org.jboss.resteasy.spi.HttpRequest;
 import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.events.Details;
+import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.ClientSessionModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.LoginProtocol.Error;
+import org.keycloak.services.ErrorPageException;
 import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.LoginActionsService;
 
 import javax.ws.rs.core.Context;
@@ -58,13 +61,13 @@ public abstract class AuthorizationEndpointBase {
     @Context
     protected ClientConnection clientConnection;
 
-    public AuthorizationEndpointBase(RealmModel realm, EventBuilder event) {
+    public AuthorizationEndpointBase(final RealmModel realm, final EventBuilder event) {
         this.realm = realm;
         this.event = event;
     }
 
-    protected AuthenticationProcessor createProcessor(ClientSessionModel clientSession, String flowId, String flowPath) {
-        AuthenticationProcessor processor = new AuthenticationProcessor();
+    protected AuthenticationProcessor createProcessor(final ClientSessionModel clientSession, final String flowId, final String flowPath) {
+        final AuthenticationProcessor processor = new AuthenticationProcessor();
         processor.setClientSession(clientSession)
                 .setFlowPath(flowPath)
                 .setFlowId(flowId)
@@ -87,10 +90,10 @@ public abstract class AuthorizationEndpointBase {
      * @param redirectToAuthentication if true redirect to flow url.  If initial call to protocol is a POST, you probably want to do this.  This is so we can disable the back button on browser
      * @return response to be returned to the browser
      */
-    protected Response handleBrowserAuthenticationRequest(ClientSessionModel clientSession, LoginProtocol protocol, boolean isPassive, boolean redirectToAuthentication) {
-        AuthenticationFlowModel flow = getAuthenticationFlow();
-        String flowId = flow.getId();
-        AuthenticationProcessor processor = createProcessor(clientSession, flowId, LoginActionsService.AUTHENTICATE_PATH);
+    protected Response handleBrowserAuthenticationRequest(final ClientSessionModel clientSession, final LoginProtocol protocol, final boolean isPassive, final boolean redirectToAuthentication) {
+        final AuthenticationFlowModel flow = getAuthenticationFlow();
+        final String flowId = flow.getId();
+        final AuthenticationProcessor processor = createProcessor(clientSession, flowId, LoginActionsService.AUTHENTICATE_PATH);
         event.detail(Details.CODE_ID, clientSession.getId());
         if (isPassive) {
             // OIDC prompt == NONE or SAML 2 IsPassive flag
@@ -100,17 +103,17 @@ public abstract class AuthorizationEndpointBase {
                 if (processor.authenticateOnly() == null) {
                     processor.attachSession();
                 } else {
-                    Response response = protocol.sendError(clientSession, Error.PASSIVE_LOGIN_REQUIRED);
+                    final Response response = protocol.sendError(clientSession, Error.PASSIVE_LOGIN_REQUIRED);
                     session.sessions().removeClientSession(realm, clientSession);
                     return response;
                 }
                 if (processor.isActionRequired()) {
-                    Response response = protocol.sendError(clientSession, Error.PASSIVE_INTERACTION_REQUIRED);
+                    final Response response = protocol.sendError(clientSession, Error.PASSIVE_INTERACTION_REQUIRED);
                     session.sessions().removeClientSession(realm, clientSession);
                     return response;
 
                 }
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 return processor.handleBrowserException(e);
             }
             return processor.finishAuthentication(protocol);
@@ -121,7 +124,7 @@ public abstract class AuthorizationEndpointBase {
                     return processor.redirectToFlow();
                 }
                 return processor.authenticate();
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 return processor.handleBrowserException(e);
             }
         }
@@ -131,4 +134,17 @@ public abstract class AuthorizationEndpointBase {
         return realm.getBrowserFlow();
     }
 
+    protected void checkSsl() {
+        if (!uriInfo.getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
+            event.error(Errors.SSL_REQUIRED);
+            throw new ErrorPageException(session, Messages.HTTPS_REQUIRED);
+        }
+    }
+
+    protected void checkRealm() {
+        if (!realm.isEnabled()) {
+            event.error(Errors.REALM_DISABLED);
+            throw new ErrorPageException(session, Messages.REALM_NOT_ENABLED);
+        }
+    }
 }

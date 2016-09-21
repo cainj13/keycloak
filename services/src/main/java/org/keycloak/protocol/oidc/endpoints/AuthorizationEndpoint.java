@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oidc.endpoints;
 
+
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
@@ -55,7 +56,7 @@ import javax.ws.rs.core.Response;
  */
 public class AuthorizationEndpoint extends AuthorizationEndpointBase {
 
-    private static final Logger logger = Logger.getLogger(AuthorizationEndpoint.class);
+    private static final ServicesLogger logger = ServicesLogger.ROOT_LOGGER;
 
     public static final String CODE_AUTH_TYPE = "code";
 
@@ -105,7 +106,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         }
 
         if (!TokenUtil.isOIDCRequest(request.getScope())) {
-            ServicesLogger.LOGGER.oidcScopeMissing();
+            logger.oidcScopeMissing();
         }
 
         errorResponse = checkOIDCParams();
@@ -195,7 +196,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         String responseType = request.getResponseType();
 
         if (responseType == null) {
-            ServicesLogger.LOGGER.missingParameter(OAuth2Constants.RESPONSE_TYPE);
+            logger.missingParameter(OAuth2Constants.RESPONSE_TYPE);
             event.error(Errors.INVALID_REQUEST);
             return redirectErrorToClient(OIDCResponseMode.QUERY, OAuthErrorException.INVALID_REQUEST, "Missing parameter: response_type");
         }
@@ -217,7 +218,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         try {
             parsedResponseMode = OIDCResponseMode.parse(request.getResponseMode(), parsedResponseType);
         } catch (IllegalArgumentException iae) {
-            ServicesLogger.LOGGER.invalidParameter(OIDCLoginProtocol.RESPONSE_MODE_PARAM);
+            logger.invalidParameter(OIDCLoginProtocol.RESPONSE_MODE_PARAM);
             event.error(Errors.INVALID_REQUEST);
             return redirectErrorToClient(OIDCResponseMode.QUERY, OAuthErrorException.INVALID_REQUEST, "Invalid parameter: response_mode");
         }
@@ -226,19 +227,19 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
 
         // Disallowed by OIDC specs
         if (parsedResponseType.isImplicitOrHybridFlow() && parsedResponseMode == OIDCResponseMode.QUERY) {
-            ServicesLogger.LOGGER.responseModeQueryNotAllowed();
+            logger.responseModeQueryNotAllowed();
             event.error(Errors.INVALID_REQUEST);
             return redirectErrorToClient(OIDCResponseMode.QUERY, OAuthErrorException.INVALID_REQUEST, "Response_mode 'query' not allowed for implicit or hybrid flow");
         }
 
         if ((parsedResponseType.hasResponseType(OIDCResponseType.CODE) || parsedResponseType.hasResponseType(OIDCResponseType.NONE)) && !client.isStandardFlowEnabled()) {
-            ServicesLogger.LOGGER.flowNotAllowed("Standard");
+            logger.flowNotAllowed("Standard");
             event.error(Errors.NOT_ALLOWED);
             return redirectErrorToClient(parsedResponseMode, OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE, "Client is not allowed to initiate browser login with given response_type. Standard flow is disabled for the client.");
         }
 
         if (parsedResponseType.isImplicitOrHybridFlow() && !client.isImplicitFlowEnabled()) {
-            ServicesLogger.LOGGER.flowNotAllowed("Implicit");
+            logger.flowNotAllowed("Implicit");
             event.error(Errors.NOT_ALLOWED);
             return redirectErrorToClient(parsedResponseMode, OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE, "Client is not allowed to initiate browser login with given response_type. Implicit flow is disabled for the client.");
         }
@@ -250,7 +251,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
 
     private Response checkOIDCParams() {
         if (parsedResponseType.isImplicitOrHybridFlow() && request.getNonce() == null) {
-            ServicesLogger.LOGGER.missingParameter(OIDCLoginProtocol.NONCE_PARAM);
+            logger.missingParameter(OIDCLoginProtocol.NONCE_PARAM);
             event.error(Errors.INVALID_REQUEST);
             return redirectErrorToClient(parsedResponseMode, OAuthErrorException.INVALID_REQUEST, "Missing parameter: nonce");
         }
