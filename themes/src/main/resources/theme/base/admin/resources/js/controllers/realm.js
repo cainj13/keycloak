@@ -1871,6 +1871,8 @@ module.controller('RealmFlowBindingCtrl', function($scope, flows, Current, Realm
         }
     }
 
+    $scope.profileInfo = serverInfo.profileInfo;
+
     genericRealmUpdate($scope, Current, Realm, realm, serverInfo, $http, $location, Dialog, Notifications, "/realms/" + realm.realm + "/authentication/flow-bindings");
 });
 
@@ -2064,6 +2066,9 @@ module.controller('AuthenticationFlowsCtrl', function($scope, $route, realm, flo
 
         } else if (realm.clientAuthenticationFlow == $scope.flow.alias) {
             Notifications.error("Cannot remove flow, it is currently being used as the client authentication flow.");
+
+        } else if (realm.dockerAuthenticationFlow == $scope.flow.alias) {
+            Notifications.error("Cannot remove flow, it is currently being used as the docker authentication flow.");
 
         } else {
             AuthenticationFlows.remove({realm: realm.realm, flow: $scope.flow.id}, function () {
