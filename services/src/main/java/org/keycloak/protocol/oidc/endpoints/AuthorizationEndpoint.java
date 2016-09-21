@@ -17,10 +17,6 @@
 
 package org.keycloak.protocol.oidc.endpoints;
 
-import javax.ws.rs.GET;
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
-
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.authentication.AuthenticationProcessor;
@@ -48,6 +44,10 @@ import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.LoginActionsService;
 import org.keycloak.services.util.CacheControlUtil;
 import org.keycloak.util.TokenUtil;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.core.MultivaluedMap;
+import javax.ws.rs.core.Response;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
@@ -80,16 +80,16 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
     private AuthorizationEndpointRequest request;
     private String redirectUri;
 
-    public AuthorizationEndpoint(RealmModel realm, EventBuilder event) {
+    public AuthorizationEndpoint(final RealmModel realm, final EventBuilder event) {
         super(realm, event);
         event.event(EventType.LOGIN);
     }
 
     @GET
     public Response build() {
-        MultivaluedMap<String, String> params = uriInfo.getQueryParameters();
+        final MultivaluedMap<String, String> params = uriInfo.getQueryParameters();
 
-        String clientId = params.getFirst(OIDCLoginProtocol.CLIENT_ID_PARAM);
+        final String clientId = params.getFirst(OIDCLoginProtocol.CLIENT_ID_PARAM);
 
         checkSsl();
         checkRealm();
@@ -149,21 +149,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         return this;
     }
 
-    private void checkSsl() {
-        if (!uriInfo.getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
-            event.error(Errors.SSL_REQUIRED);
-            throw new ErrorPageException(session, Messages.HTTPS_REQUIRED);
-        }
-    }
-
-    private void checkRealm() {
-        if (!realm.isEnabled()) {
-            event.error(Errors.REALM_DISABLED);
-            throw new ErrorPageException(session, Messages.REALM_NOT_ENABLED);
-        }
-    }
-
-    private void checkClient(String clientId) {
+    private void checkClient(final String clientId) {
         if (clientId == null) {
             event.error(Errors.INVALID_REQUEST);
             throw new ErrorPageException(session, Messages.MISSING_PARAMETER, OIDCLoginProtocol.CLIENT_ID_PARAM);
@@ -191,7 +177,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
     }
 
     private Response checkResponseType() {
-        String responseType = request.getResponseType();
+        final String responseType = request.getResponseType();
 
         if (responseType == null) {
             logger.missingParameter(OAuth2Constants.RESPONSE_TYPE);
@@ -206,7 +192,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
             if (action == null) {
                 action = Action.CODE;
             }
-        } catch (IllegalArgumentException iae) {
+        } catch (final IllegalArgumentException iae) {
             logger.error(iae.getMessage());
             event.error(Errors.INVALID_REQUEST);
             return redirectErrorToClient(OIDCResponseMode.QUERY, OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE, null);
@@ -215,7 +201,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         OIDCResponseMode parsedResponseMode = null;
         try {
             parsedResponseMode = OIDCResponseMode.parse(request.getResponseMode(), parsedResponseType);
-        } catch (IllegalArgumentException iae) {
+        } catch (final IllegalArgumentException iae) {
             logger.invalidParameter(OIDCLoginProtocol.RESPONSE_MODE_PARAM);
             event.error(Errors.INVALID_REQUEST);
             return redirectErrorToClient(OIDCResponseMode.QUERY, OAuthErrorException.INVALID_REQUEST, "Invalid parameter: response_mode");
@@ -257,8 +243,8 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         return null;
     }
 
-    private Response redirectErrorToClient(OIDCResponseMode responseMode, String error, String errorDescription) {
-        OIDCRedirectUriBuilder errorResponseBuilder = OIDCRedirectUriBuilder.fromUri(redirectUri, responseMode)
+    private Response redirectErrorToClient(final OIDCResponseMode responseMode, final String error, final String errorDescription) {
+        final OIDCRedirectUriBuilder errorResponseBuilder = OIDCRedirectUriBuilder.fromUri(redirectUri, responseMode)
                 .addParam(OAuth2Constants.ERROR, error);
 
         if (errorDescription != null) {
@@ -273,7 +259,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
     }
 
     private void checkRedirectUri() {
-        String redirectUriParam = request.getRedirectUriParam();
+        final String redirectUriParam = request.getRedirectUriParam();
 
         event.detail(Details.REDIRECT_URI, redirectUriParam);
 
@@ -303,7 +289,7 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         if (request.getResponseMode() != null) clientSession.setNote(OIDCLoginProtocol.RESPONSE_MODE_PARAM, request.getResponseMode());
 
         if (request.getAdditionalReqParams() != null) {
-            for (String paramName : request.getAdditionalReqParams().keySet()) {
+            for (final String paramName : request.getAdditionalReqParams().keySet()) {
                 clientSession.setNote(CLIENT_SESSION_NOTE_ADDITIONAL_REQ_PARAMS_PREFIX + paramName, request.getAdditionalReqParams().get(paramName));
             }
         }
@@ -319,10 +305,10 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
     private Response buildRegister() {
         authManager.expireIdentityCookie(realm, uriInfo, clientConnection);
 
-        AuthenticationFlowModel flow = realm.getRegistrationFlow();
-        String flowId = flow.getId();
+        final AuthenticationFlowModel flow = realm.getRegistrationFlow();
+        final String flowId = flow.getId();
 
-        AuthenticationProcessor processor = createProcessor(clientSession, flowId, LoginActionsService.REGISTRATION_PATH);
+        final AuthenticationProcessor processor = createProcessor(clientSession, flowId, LoginActionsService.REGISTRATION_PATH);
 
         return processor.authenticate();
     }
@@ -330,10 +316,10 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
     private Response buildForgotCredential() {
         authManager.expireIdentityCookie(realm, uriInfo, clientConnection);
 
-        AuthenticationFlowModel flow = realm.getResetCredentialsFlow();
-        String flowId = flow.getId();
+        final AuthenticationFlowModel flow = realm.getResetCredentialsFlow();
+        final String flowId = flow.getId();
 
-        AuthenticationProcessor processor = createProcessor(clientSession, flowId, LoginActionsService.RESET_CREDENTIALS_PATH);
+        final AuthenticationProcessor processor = createProcessor(clientSession, flowId, LoginActionsService.RESET_CREDENTIALS_PATH);
 
         return processor.authenticate();
     }
