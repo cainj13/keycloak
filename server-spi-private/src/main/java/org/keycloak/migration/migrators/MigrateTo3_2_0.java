@@ -22,6 +22,9 @@ import org.keycloak.migration.ModelVersion;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.PasswordPolicy;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.utils.DefaultAuthenticationFlows;
+
+import java.util.Objects;
 
 public class MigrateTo3_2_0 implements Migration {
 
@@ -35,6 +38,10 @@ public class MigrateTo3_2_0 implements Migration {
                 realm.setPasswordPolicy(builder.remove(PasswordPolicy.HASH_ITERATIONS_ID).build(session));
             }
         }
+
+		session.realms().getRealms().stream()
+				.filter(realm -> Objects.isNull(realm.getDockerAuthenticationFlow()))
+				.forEach(realm -> DefaultAuthenticationFlows.dockerAuthenticationFlow(realm));
     }
 
     @Override

@@ -418,3 +418,38 @@ and argument: `-p 8181`
 3) Run loadbalancer (class `SimpleUndertowLoadBalancer`) without arguments and system properties. Loadbalancer runs on port 8180, so you can access Keycloak on `http://localhost:8180/auth`     
 
 
+## Run Docker Authentication tests
+
+First, validate that your machine has a valid docker installation and that it is available to the JVM running the tests.
+
+Next make sure to use Keycloak Server as local authentication server, and Wildfly as application server for the tests:
+
+	mvn -f testsuite/integration-arquillian/servers/pom.xml \
+		clean install \
+		-Pauth-server-wildfly \
+		-Papp-server-wildfly
+
+Finally, run the tests:
+
+	mvn -f testsuit/integration-arquillian/tests/base/pom.xml \
+		clean test \
+		-Dtest=DockerClientTest \
+		-Pauth-server-wildfly \
+		-Pauth-server-enable-disable-feature \
+		-Dfeature.name=docker \
+		-Dfeature.value=enabled
+
+If docker daemon doesn't run locally, or if you're not running on Linux, you may need
+ to determine the IP of the bridge interface or local interface that Docker daemon can use to connect to Keycloak Server. 
+ Then specify that IP as additional system property called *host.ip*, for example:
+   
+    -Dhost.ip=192.168.64.1
+
+If using Docker for Mac, a trick to get Docker Daemon to connect to Keycloak Server is to
+create an alias for your local network interface:
+
+    sudo ifconfig lo0 alias 10.200.10.1/24
+    
+Then pass the IP as *host.ip*:
+
+    -Dhost.ip=10.200.10.1
