@@ -8,31 +8,47 @@
 
     <ul class="nav nav-tabs"  data-ng-hide="create && !path[4]">
         <li ng-class="{active: !path[4]}"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}">{{:: 'settings' | translate}}</a></li>
-        <li ng-class="{active: path[4] == 'credentials'}" data-ng-show="!client.publicClient && client.protocol != 'saml'"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/credentials">{{:: 'credentials' | translate}}</a></li>
+        <li ng-class="{active: path[4] == 'credentials'}"
+            data-ng-show="!client.publicClient && client.protocol == 'openid-connect'">
+            <a href="#/realms/{{realm.realm}}/clients/{{client.id}}/credentials">{{:: 'credentials' | translate}}</a>
+        </li>
         <li ng-class="{active: path[4] == 'saml'}" data-ng-show="client.protocol == 'saml' && (client.attributes['saml.client.signature'] == 'true' || client.attributes['saml.encrypt'] == 'true')"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/saml/keys">{{:: 'saml-keys' | translate}}</a></li>
-        <li ng-class="{active: path[4] == 'roles'}"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/roles">{{:: 'roles' | translate}}</a></li>
+        <li ng-class="{active: path[4] == 'roles'}" data-ng-show="client.protocol != 'docker-v2'"><a
+                href="#/realms/{{realm.realm}}/clients/{{client.id}}/roles">{{:: 'roles' | translate}}</a></li>
         <li ng-class="{active: path[4] == 'mappers'}" data-ng-show="!client.bearerOnly">
             <a href="#/realms/{{realm.realm}}/clients/{{client.id}}/mappers">{{:: 'mappers' | translate}}</a>
             <kc-tooltip>{{:: 'mappers.tooltip' | translate}}</kc-tooltip>
         </li>
-        <li ng-class="{active: path[4] == 'scope-mappings'}" data-ng-show="!client.bearerOnly">
+        <li ng-class="{active: path[4] == 'scope-mappings'}"
+            data-ng-show="!client.bearerOnly && client.protocol != 'docker-v2'">
             <a href="#/realms/{{realm.realm}}/clients/{{client.id}}/scope-mappings">{{:: 'scope' | translate}}</a>
             <kc-tooltip>{{:: 'scope.tooltip' | translate}}</kc-tooltip>
         </li>
+<<<<<<< 8a3319d646e251bd0926ba65910ee63279afbbf3
         <li ng-class="{active: path[4] == 'authz'}" data-ng-show="serverInfo.profileInfo.previewEnabled && !disableAuthorizationTab && client.authorizationServicesEnabled"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/authz/resource-server">{{:: 'authz-authorization' | translate}}</a></li>
         <li ng-class="{active: path[4] == 'revocation'}"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/revocation">{{:: 'revocation' | translate}}</a></li>
+=======
+        <li ng-class="{active: path[4] == 'authz'}" data-ng-show="!disableAuthorizationTab && client.authorizationServicesEnabled"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/authz/resource-server">{{:: 'authz-authorization' | translate}}</a></li>
+        <li ng-class="{active: path[4] == 'revocation'}" data-ng-show="client.protocol != 'docker-v2'"><a
+                href="#/realms/{{realm.realm}}/clients/{{client.id}}/revocation">{{:: 'revocation' | translate}}</a>
+        </li>
+>>>>>>> tweak javascript to hide unused tabs for docker protocol
     <!--    <li ng-class="{active: path[4] == 'identity-provider'}" data-ng-show="realm.identityFederationEnabled"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/identity-provider">Identity Provider</a></li> -->
         <li ng-class="{active: path[4] == 'sessions'}" data-ng-show="!client.bearerOnly">
             <a href="#/realms/{{realm.realm}}/clients/{{client.id}}/sessions">{{:: 'sessions' | translate}}</a>
             <kc-tooltip>{{:: 'sessions.tooltip' | translate}}</kc-tooltip>
         </li>
 
-        <li ng-class="{active: path[4] == 'offline-access'}" data-ng-show="!client.bearerOnly">
+        <li ng-class="{active: path[4] == 'offline-access'}"
+            data-ng-show="!client.bearerOnly && client.protocol != 'docker-v2'">
             <a href="#/realms/{{realm.realm}}/clients/{{client.id}}/offline-access">{{:: 'offline-access' | translate}}</a>
             <kc-tooltip>{{:: 'offline-access.tooltip' | translate}}</kc-tooltip>
         </li>
 
-        <li ng-class="{active: path[4] == 'clustering'}" data-ng-show="!client.publicClient"><a href="#/realms/{{realm.realm}}/clients/{{client.id}}/clustering">{{:: 'clustering' | translate}}</a></li>
+        <li ng-class="{active: path[4] == 'clustering'}"
+            data-ng-show="!client.publicClient && client.protocol != 'docker-v2'"><a
+                href="#/realms/{{realm.realm}}/clients/{{client.id}}/clustering">{{:: 'clustering' | translate}}</a>
+        </li>
 
         <li ng-class="{active: path[4] == 'installation'}">
             <a href="#/realms/{{realm.realm}}/clients/{{client.id}}/installation">{{:: 'installation' | translate}}</a>
