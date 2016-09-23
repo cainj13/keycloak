@@ -1,4 +1,4 @@
-package org.keycloak.protocol.docker;
+package org.keycloak.protocol.docker.installation;
 
 import org.keycloak.Config;
 import org.keycloak.models.ClientModel;
@@ -6,6 +6,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.ClientInstallationProvider;
+import org.keycloak.protocol.docker.DockerAuthV2Protocol;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -42,7 +43,7 @@ public class DockerVariableOverrideInstallationProvider implements ClientInstall
     public Response generateInstallation(final KeycloakSession session, final RealmModel realm, final ClientModel client, final URI serverBaseUri) {
         final StringBuilder builder = new StringBuilder()
                 .append("    REGISTRY_AUTH_TOKEN_REALM: ").append(serverBaseUri).append("/auth/realms/").append(realm.getName()).append("/protocol/").append(DockerAuthV2Protocol.LOGIN_PROTOCOL).append("/auth\n")
-                .append("    REGISTRY_AUTH_TOKEN_SERVICE: docker-registry\n")
+                .append("    REGISTRY_AUTH_TOKEN_SERVICE: ").append(client.getId()).append("\n")
                 .append("    REGISTRY_AUTH_TOKEN_ISSUER: ").append(serverBaseUri).append("/auth/realms/").append(realm.getName()).append("\n");
         return Response.ok(builder.toString(), MediaType.TEXT_PLAIN_TYPE).build();
     }

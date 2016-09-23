@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class DockerAuthV2LoginProtocolFactory extends AbstractLoginProtocolFactory {
+public class DockerAuthV2ProtocolFactory extends AbstractLoginProtocolFactory {
 
     static List<ProtocolMapperModel> builtins = new ArrayList<>();
     static List<ProtocolMapperModel> defaultBuiltins = new ArrayList<>();
