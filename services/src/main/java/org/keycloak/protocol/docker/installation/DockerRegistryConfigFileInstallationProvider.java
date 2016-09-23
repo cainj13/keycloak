@@ -1,4 +1,4 @@
-package org.keycloak.protocol.docker;
+package org.keycloak.protocol.docker.installation;
 
 import org.keycloak.Config;
 import org.keycloak.models.ClientModel;
@@ -6,6 +6,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.ClientInstallationProvider;
+import org.keycloak.protocol.docker.DockerAuthV2Protocol;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -43,7 +44,7 @@ public class DockerRegistryConfigFileInstallationProvider implements ClientInsta
         final StringBuilder responseString = new StringBuilder("auth:\n")
                 .append("  token:\n")
                 .append("    realm: ").append(serverBaseUri).append("/auth/realms/").append(realm.getName()).append("/protocol/").append(DockerAuthV2Protocol.LOGIN_PROTOCOL).append("/auth\n")
-                .append("    service: docker-registry\n")
+                .append("    service: ").append(client.getId()).append("\n")
                 .append("    issuer: ").append(serverBaseUri).append("/auth/realms/").append(realm.getName()).append("\n");
         return Response.ok(responseString.toString(), MediaType.TEXT_PLAIN_TYPE).build();
     }
