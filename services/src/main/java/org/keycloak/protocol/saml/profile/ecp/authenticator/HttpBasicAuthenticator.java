@@ -25,6 +25,7 @@ import org.keycloak.authentication.Authenticator;
 import org.keycloak.authentication.AuthenticatorFactory;
 import org.keycloak.common.util.Base64;
 import org.keycloak.events.Errors;
+import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.AuthenticationExecutionModel.Requirement;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
@@ -52,7 +53,7 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
 
     @Override
     public String getReferenceCategory() {
-        return null;
+        return "basic";
     }
 
     @Override
@@ -60,9 +61,15 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
         return false;
     }
 
+    private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
+            AuthenticationExecutionModel.Requirement.REQUIRED,
+            Requirement.OPTIONAL,
+            AuthenticationExecutionModel.Requirement.DISABLED
+    };
+
     @Override
-    public Requirement[] getRequirementChoices() {
-        return new Requirement[0];
+    public AuthenticationExecutionModel.Requirement[] getRequirementChoices() {
+        return REQUIREMENT_CHOICES;
     }
 
     @Override
@@ -81,27 +88,27 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
     }
 
     @Override
-    public Authenticator create(KeycloakSession session) {
+    public Authenticator create(final KeycloakSession session) {
         return new Authenticator() {
 
             private static final String BASIC = "Basic";
             private static final String BASIC_PREFIX = BASIC + " ";
 
             @Override
-            public void authenticate(AuthenticationFlowContext context) {
-                HttpRequest httpRequest = context.getHttpRequest();
-                HttpHeaders httpHeaders = httpRequest.getHttpHeaders();
-                String[] usernameAndPassword = getUsernameAndPassword(httpHeaders);
+            public void authenticate(final AuthenticationFlowContext context) {
+                final HttpRequest httpRequest = context.getHttpRequest();
+                final HttpHeaders httpHeaders = httpRequest.getHttpHeaders();
+                final String[] usernameAndPassword = getUsernameAndPassword(httpHeaders);
 
                 context.attempted();
 
                 if (usernameAndPassword != null) {
-                    RealmModel realm = context.getRealm();
-                    UserModel user = context.getSession().users().getUserByUsername(usernameAndPassword[0], realm);
+                    final RealmModel realm = context.getRealm();
+                    final UserModel user = context.getSession().users().getUserByUsername(usernameAndPassword[0], realm);
 
                     if (user != null) {
-                        String password = usernameAndPassword[1];
-                        boolean valid = context.getSession().userCredentialManager().isValid(realm, user, UserCredentialModel.password(password));
+                        final String password = usernameAndPassword[1];
+                        final boolean valid = context.getSession().users().validCredentials(context.getSession(), realm, user, UserCredentialModel.password(password));
 
                         if (valid) {
                             context.getClientSession().setAuthenticatedUser(user);
@@ -117,8 +124,8 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
                 }
             }
 
-            private String[] getUsernameAndPassword(HttpHeaders httpHeaders) {
-                List<String> authHeaders = httpHeaders.getRequestHeader(HttpHeaders.AUTHORIZATION);
+            private String[] getUsernameAndPassword(final HttpHeaders httpHeaders) {
+                final List<String> authHeaders = httpHeaders.getRequestHeader(HttpHeaders.AUTHORIZATION);
 
                 if (authHeaders == null || authHeaders.size() == 0) {
                     return null;
@@ -126,9 +133,9 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
 
                 String credentials = null;
 
-                for (String authHeader : authHeaders) {
+                for (final String authHeader : authHeaders) {
                     if (authHeader.startsWith(BASIC_PREFIX)) {
-                        String[] split = authHeader.trim().split("\\s+");
+                        final String[] split = authHeader.trim().split("\\s+");
 
                         if (split == null || split.length != 2) return null;
 
@@ -138,13 +145,13 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
 
                 try {
                     return new String(Base64.decode(credentials)).split(":");
-                } catch (IOException e) {
+                } catch (final IOException e) {
                     throw new RuntimeException("Failed to parse credentials.", e);
                 }
             }
 
             @Override
-            public void action(AuthenticationFlowContext context) {
+            public void action(final AuthenticationFlowContext context) {
 
             }
 
@@ -154,12 +161,12 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
             }
 
             @Override
-            public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
+            public boolean configuredFor(final KeycloakSession session, final RealmModel realm, final UserModel user) {
                 return false;
             }
 
             @Override
-            public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {
+            public void setRequiredActions(final KeycloakSession session, final RealmModel realm, final UserModel user) {
 
             }
 
@@ -171,12 +178,12 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
     }
 
     @Override
-    public void init(Config.Scope config) {
+    public void init(final Config.Scope config) {
 
     }
 
     @Override
-    public void postInit(KeycloakSessionFactory factory) {
+    public void postInit(final KeycloakSessionFactory factory) {
 
     }
 
