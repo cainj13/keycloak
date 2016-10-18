@@ -1,5 +1,6 @@
 package org.keycloak.protocol.docker;
 
+import org.jboss.logging.Logger;
 import org.jboss.resteasy.specimpl.ResponseBuilderImpl;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
@@ -19,8 +20,6 @@ import org.keycloak.representations.docker.DockerResponseToken;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.ClientSessionCode;
 import org.keycloak.util.TokenUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
@@ -31,7 +30,7 @@ import java.util.Date;
 import java.util.Set;
 
 public class DockerAuthV2Protocol implements LoginProtocol {
-    private static final Logger log = LoggerFactory.getLogger(DockerAuthV2Protocol.class);
+    protected static final Logger logger = Logger.getLogger(DockerEndpoint.class);
 
     public static final String LOGIN_PROTOCOL = "docker-v2";
     public static final String ACCOUNT_PARAM = "account";
@@ -134,7 +133,7 @@ public class DockerAuthV2Protocol implements LoginProtocol {
                     .setIssued_at(expiresInIso8601String);
             return new ResponseBuilderImpl().status(Response.Status.OK).header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON).entity(responseEntity).build();
         } else {
-            log.error("Unable to handle request for event type {}.  Currently only LOGIN event types are supported by docker protocol.", event.getEvent() == null ? "null" : event.getEvent().getType());
+            logger.errorv("Unable to handle request for event type {0}.  Currently only LOGIN event types are supported by docker protocol.", event.getEvent() == null ? "null" : event.getEvent().getType());
             throw new ErrorResponseException("invalid_request", "Event type not supported", Response.Status.BAD_REQUEST);
         }
 
@@ -166,7 +165,7 @@ public class DockerAuthV2Protocol implements LoginProtocol {
     }
 
     private Response errorResponse(final UserSessionModel userSession, final String methodName) {
-        log.error("User {} attempted to invoke method {} on docker protocol.  Something has probably gone terribly wrong.", userSession.getUser().getUsername(), methodName);
+        logger.errorv("User {0} attempted to invoke unsupported method {1} on docker protocol.", userSession.getUser().getUsername(), methodName);
         throw new ErrorResponseException("invalid_request", String.format("Attempted to invoke unsupported docker method %s", methodName), Response.Status.BAD_REQUEST);
     }
 

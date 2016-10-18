@@ -1,5 +1,6 @@
 package org.keycloak.protocol.docker;
 
+import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.ClientModel;
@@ -9,8 +10,6 @@ import org.keycloak.protocol.AuthorizationEndpointBase;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.Urls;
 import org.keycloak.services.util.CacheControlUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.core.MultivaluedMap;
@@ -20,7 +19,7 @@ import javax.ws.rs.core.Response;
  * Implements a docker-client understandable format.
  */
 public class DockerEndpoint extends AuthorizationEndpointBase {
-    private static final Logger log = LoggerFactory.getLogger(DockerEndpoint.class);
+    protected static final Logger logger = Logger.getLogger(DockerEndpoint.class);
 
     private final EventType login;
     private String account;
@@ -40,7 +39,7 @@ public class DockerEndpoint extends AuthorizationEndpointBase {
 
         account = params.getFirst(DockerAuthV2Protocol.ACCOUNT_PARAM);
         if (account == null) {
-            log.debug("Account parameter not provided by docker auth.  This is techincally required, but not actually used since " +
+            logger.debug("Account parameter not provided by docker auth.  This is techincally required, but not actually used since " +
                     "username is provided by Basic auth header.");
         }
         service = params.getFirst(DockerAuthV2Protocol.SERVICE_PARAM);
@@ -49,13 +48,10 @@ public class DockerEndpoint extends AuthorizationEndpointBase {
         }
         client = realm.getClientByClientId(service);
         if (client == null) {
-            log.error("Failed to lookup client given by service={} parameter for realm: {}.", service, realm.getName());
+            logger.errorv("Failed to lookup client given by service={0} parameter for realm: {1}.", service, realm.getName());
             throw new ErrorResponseException("invalid_client", "Client specified by 'service' parameter does not exist", Response.Status.BAD_REQUEST);
         }
         scope = params.getFirst(DockerAuthV2Protocol.SCOPE_PARAM);
-        if (scope == null) {
-            throw new ErrorResponseException("invalid_request", "scope parameter must be provided", Response.Status.BAD_REQUEST);
-        }
 
         checkSsl();
         checkRealm();
