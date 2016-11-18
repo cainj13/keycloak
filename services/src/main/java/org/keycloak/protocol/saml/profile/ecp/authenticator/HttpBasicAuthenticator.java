@@ -108,7 +108,7 @@ public class HttpBasicAuthenticator implements AuthenticatorFactory {
 
                     if (user != null) {
                         final String password = usernameAndPassword[1];
-                        final boolean valid = context.getSession().users().validCredentials(context.getSession(), realm, user, UserCredentialModel.password(password));
+                        final boolean valid = context.getSession().userCredentialManager().isValid(realm, user, UserCredentialModel.password(password));
 
                         if (valid) {
                             context.getClientSession().setAuthenticatedUser(user);

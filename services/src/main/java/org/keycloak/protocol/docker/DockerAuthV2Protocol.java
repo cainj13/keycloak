@@ -7,6 +7,7 @@ import org.keycloak.events.EventType;
 import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionModel;
+import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.RealmModel;
@@ -120,11 +121,12 @@ public class DockerAuthV2Protocol implements LoginProtocol {
 
         // Finally, construct the response to the docker client with the token + metadata
         if (event.getEvent() != null && EventType.LOGIN.equals(event.getEvent().getType())) {
+            final KeyManager.ActiveKey activeKey = session.keys().getActiveKey(realm);
             final String encodedToken = new JWSBuilder()
-                    .kid(realm.getKeyId())
+                    .kid(activeKey.getKid())
                     .type("JWT")
                     .jsonContent(responseToken)
-                    .rsa256(realm.getPrivateKey());
+                    .rsa256(activeKey.getPrivateKey());
             final String expiresInIso8601String = new SimpleDateFormat(ISO_8601_DATE_FORMAT).format(new Date(responseToken.getIssuedAt() * 1000L));
 
             final DockerResponse responseEntity = new DockerResponse()
