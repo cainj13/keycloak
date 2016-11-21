@@ -36,8 +36,8 @@ import java.util.List;
  */
 public class InitialFlowsTest extends AbstractAuthenticationTest {
 
-    private HashMap<String, AuthenticatorConfigRepresentation> configs = new HashMap<>();
-    private HashMap<String, AuthenticatorConfigRepresentation> expectedConfigs = new HashMap<>();
+    private final HashMap<String, AuthenticatorConfigRepresentation> configs = new HashMap<>();
+    private final HashMap<String, AuthenticatorConfigRepresentation> expectedConfigs = new HashMap<>();
 
     {
         expectedConfigs.put("idp-review-profile", newConfig("review profile config", new String[]{"update.profile.on.first.login", "missing"}));
@@ -47,17 +47,17 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
     @Test
     public void testInitialFlows() {
 
-        List<FlowExecutions> result = new LinkedList<>();
+        final List<FlowExecutions> result = new LinkedList<>();
 
         // get all flows
-        List<AuthenticationFlowRepresentation> flows = authMgmtResource.getFlows();
-        for (AuthenticationFlowRepresentation flow : flows) {
+        final List<AuthenticationFlowRepresentation> flows = authMgmtResource.getFlows();
+        for (final AuthenticationFlowRepresentation flow : flows) {
             // get all executions for flow
-            List<AuthenticationExecutionInfoRepresentation> executionReps = authMgmtResource.getExecutions(flow.getAlias());
+            final List<AuthenticationExecutionInfoRepresentation> executionReps = authMgmtResource.getExecutions(flow.getAlias());
 
-            for (AuthenticationExecutionInfoRepresentation exec : executionReps) {
+            for (final AuthenticationExecutionInfoRepresentation exec : executionReps) {
                 // separately load referenced configurations
-                String configId = exec.getAuthenticationConfig();
+                final String configId = exec.getAuthenticationConfig();
                 if (configId != null && !configs.containsKey(configId)) {
                     configs.put(configId, authMgmtResource.getAuthenticatorConfig(configId));
                 }
@@ -69,13 +69,13 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
         compare(expectedFlows(), orderAlphabetically(result));
     }
 
-    private void compare(List<FlowExecutions> expected, List<FlowExecutions> actual) {
+    private void compare(final List<FlowExecutions> expected, final List<FlowExecutions> actual) {
         Assert.assertEquals("Flow count", expected.size(), actual.size());
-        Iterator<FlowExecutions> it1 = expected.iterator();
-        Iterator<FlowExecutions> it2 = actual.iterator();
+        final Iterator<FlowExecutions> it1 = expected.iterator();
+        final Iterator<FlowExecutions> it2 = actual.iterator();
         while (it1.hasNext()) {
-            FlowExecutions fe1 = it1.next();
-            FlowExecutions fe2 = it2.next();
+            final FlowExecutions fe1 = it1.next();
+            final FlowExecutions fe2 = it2.next();
 
             compareFlows(fe1.flow, fe2.flow);
             compareExecutionsInfo(fe1.executions, fe2.executions);
@@ -83,26 +83,26 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
     }
 
 
-    private void compareExecutionsInfo(List<AuthenticationExecutionInfoRepresentation> expected, List<AuthenticationExecutionInfoRepresentation> actual) {
+    private void compareExecutionsInfo(final List<AuthenticationExecutionInfoRepresentation> expected, final List<AuthenticationExecutionInfoRepresentation> actual) {
         Assert.assertEquals("Executions count", expected.size(), actual.size());
-        Iterator<AuthenticationExecutionInfoRepresentation> it1 = expected.iterator();
-        Iterator<AuthenticationExecutionInfoRepresentation> it2 = actual.iterator();
+        final Iterator<AuthenticationExecutionInfoRepresentation> it1 = expected.iterator();
+        final Iterator<AuthenticationExecutionInfoRepresentation> it2 = actual.iterator();
         while (it1.hasNext()) {
-            AuthenticationExecutionInfoRepresentation exe1 = it1.next();
-            AuthenticationExecutionInfoRepresentation exe2 = it2.next();
+            final AuthenticationExecutionInfoRepresentation exe1 = it1.next();
+            final AuthenticationExecutionInfoRepresentation exe2 = it2.next();
 
             compareExecutionWithConfig(exe1, exe2);
         }
     }
 
-    private void compareExecutionWithConfig(AuthenticationExecutionInfoRepresentation expected, AuthenticationExecutionInfoRepresentation actual) {
+    private void compareExecutionWithConfig(final AuthenticationExecutionInfoRepresentation expected, final AuthenticationExecutionInfoRepresentation actual) {
         super.compareExecution(expected, actual);
         compareAuthConfig(expected, actual);
     }
 
-    private void compareAuthConfig(AuthenticationExecutionInfoRepresentation expected, AuthenticationExecutionInfoRepresentation actual) {
-        AuthenticatorConfigRepresentation cfg1 = expectedConfigs.get(expected.getProviderId());
-        AuthenticatorConfigRepresentation cfg2 = configs.get(actual.getAuthenticationConfig());
+    private void compareAuthConfig(final AuthenticationExecutionInfoRepresentation expected, final AuthenticationExecutionInfoRepresentation actual) {
+        final AuthenticatorConfigRepresentation cfg1 = expectedConfigs.get(expected.getProviderId());
+        final AuthenticatorConfigRepresentation cfg2 = configs.get(actual.getAuthenticationConfig());
 
         if (cfg1 == null && cfg2 == null) {
             return;
@@ -111,14 +111,14 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
         Assert.assertEquals("Execution configuration params", cfg1.getConfig(), cfg2.getConfig());
     }
 
-    private List<FlowExecutions> orderAlphabetically(List<FlowExecutions> result) {
-        List<FlowExecutions> sorted = new ArrayList<>(result);
+    private List<FlowExecutions> orderAlphabetically(final List<FlowExecutions> result) {
+        final List<FlowExecutions> sorted = new ArrayList<>(result);
         Collections.sort(sorted);
         return sorted;
     }
 
     private LinkedList<FlowExecutions> expectedFlows() {
-        LinkedList<FlowExecutions> expected = new LinkedList<>();
+        final LinkedList<FlowExecutions> expected = new LinkedList<>();
 
         AuthenticationFlowRepresentation flow = newFlow("browser", "browser based authentication", "basic-flow", true, true);
         addExecExport(flow, null, false, "auth-cookie", false, null, ALTERNATIVE, 10);
@@ -200,17 +200,17 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
         addExecExport(flow, null, false, "http-basic-authenticator", false, null, REQUIRED, 10);
 
         execs = new LinkedList<>();
-        addExecInfo(execs, "HTTP Basic Authentication", "http-basic-authenticator", false, 0, 0, REQUIRED, null, new String[]{});
+        addExecInfo(execs, "HTTP Basic Authentication", "http-basic-authenticator", false, 0, 0, REQUIRED, null, new String[]{REQUIRED, ALTERNATIVE, OPTIONAL, DISABLED});
         expected.add(new FlowExecutions(flow, execs));
 
         return expected;
     }
 
-    private void addExecExport(AuthenticationFlowRepresentation flow, String flowAlias, boolean userSetupAllowed,
-                               String authenticator, boolean authenticatorFlow, String authenticatorConfig,
-                               String requirement, int priority) {
+    private void addExecExport(final AuthenticationFlowRepresentation flow, final String flowAlias, final boolean userSetupAllowed,
+                               final String authenticator, final boolean authenticatorFlow, final String authenticatorConfig,
+                               final String requirement, final int priority) {
 
-        AuthenticationExecutionExportRepresentation rep = newExecutionExportRepresentation(flowAlias, userSetupAllowed,
+        final AuthenticationExecutionExportRepresentation rep = newExecutionExportRepresentation(flowAlias, userSetupAllowed,
                 authenticator, authenticatorFlow, authenticatorConfig, requirement, priority);
 
         List<AuthenticationExecutionExportRepresentation> execs = flow.getAuthenticationExecutions();
@@ -221,8 +221,8 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
         execs.add(rep);
     }
 
-    private AuthenticationExecutionExportRepresentation newExecutionExportRepresentation(String flowAlias, boolean userSetupAllowed, String authenticator, boolean authenticatorFlow, String authenticatorConfig, String requirement, int priority) {
-        AuthenticationExecutionExportRepresentation rep = new AuthenticationExecutionExportRepresentation();
+    private AuthenticationExecutionExportRepresentation newExecutionExportRepresentation(final String flowAlias, final boolean userSetupAllowed, final String authenticator, final boolean authenticatorFlow, final String authenticatorConfig, final String requirement, final int priority) {
+        final AuthenticationExecutionExportRepresentation rep = new AuthenticationExecutionExportRepresentation();
         rep.setFlowAlias(flowAlias);
         rep.setUserSetupAllowed(userSetupAllowed);
         rep.setAuthenticator(authenticator);
@@ -237,13 +237,13 @@ public class InitialFlowsTest extends AbstractAuthenticationTest {
         AuthenticationFlowRepresentation flow;
         List<AuthenticationExecutionInfoRepresentation> executions;
 
-        FlowExecutions(AuthenticationFlowRepresentation flow, List<AuthenticationExecutionInfoRepresentation> executions) {
+        FlowExecutions(final AuthenticationFlowRepresentation flow, final List<AuthenticationExecutionInfoRepresentation> executions) {
             this.flow = flow;
             this.executions = executions;
         }
 
         @Override
-        public int compareTo(FlowExecutions o) {
+        public int compareTo(final FlowExecutions o) {
             return flow.getAlias().compareTo(o.flow.getAlias());
         }
     }
