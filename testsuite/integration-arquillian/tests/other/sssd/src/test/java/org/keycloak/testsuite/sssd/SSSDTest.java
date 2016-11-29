@@ -5,11 +5,14 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
+import org.keycloak.common.util.MultivaluedHashMap;
+import org.keycloak.representations.idm.ComponentRepresentation;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserFederationProviderFactoryRepresentation;
 import org.keycloak.representations.idm.UserFederationProviderRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.AssertEvents;
@@ -61,23 +64,17 @@ public class SSSDTest extends AbstractKeycloakTest {
 
     @Before
     public void createUserFederation() {
-        UserFederationProviderRepresentation userFederation = new UserFederationProviderRepresentation();
+        ComponentRepresentation userFederation = new ComponentRepresentation();
 
-        Map<String, String> config = new HashMap<>();
+        MultivaluedHashMap<String, String> config = new MultivaluedHashMap<>();
         userFederation.setConfig(config);
 
-        userFederation.setDisplayName(DISPLAY_NAME);
-        userFederation.setPriority(0);
-        userFederation.setProviderName(PROVIDER_NAME);
+        userFederation.setName(DISPLAY_NAME);
+        userFederation.getConfig().putSingle("priority", "0");
+        userFederation.setProviderType(UserStorageProvider.class.getName());
+        userFederation.setProviderId(PROVIDER_NAME);
 
-        adminClient.realm(REALM_NAME).userFederation().create(userFederation);
-    }
-
-    @Ignore
-    @Test
-    public void testProviderFactories() {
-        List<UserFederationProviderFactoryRepresentation> providerFactories = adminClient.realm(REALM_NAME).userFederation().getProviderFactories();
-        Assert.assertNames(providerFactories, "ldap", "kerberos", "dummy", "dummy-configurable", "sssd");
+        adminClient.realm(REALM_NAME).components().add(userFederation);
     }
 
     @Test
@@ -109,7 +106,6 @@ public class SSSDTest extends AbstractKeycloakTest {
         driver.navigate().to(getAccountUrl());
         Assert.assertEquals("Browser should be on login page now", "Log in to " + REALM_NAME, driver.getTitle());
         accountLoginPage.login(ADMIN_USERNAME, ADMIN_PASSWORD);
-
         Assert.assertEquals("Unexpected error when handling authentication request to identity provider.", accountLoginPage.getInstruction());
     }
 
@@ -120,8 +116,7 @@ public class SSSDTest extends AbstractKeycloakTest {
         driver.navigate().to(getAccountUrl());
         Assert.assertEquals("Browser should be on login page now", "Log in to " + REALM_NAME, driver.getTitle());
         accountLoginPage.login(USERNAME, PASSWORD);
-        Assert.assertEquals("Browser should be on account page now, logged in", "Keycloak Account Management", driver.getTitle());
-
+        Assert.assertTrue(profilePage.isCurrent());
         testUserGroups();
     }
 

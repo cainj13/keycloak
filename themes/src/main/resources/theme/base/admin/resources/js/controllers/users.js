@@ -535,6 +535,9 @@ module.controller('UserCredentialsCtrl', function($scope, realm, user, $route, R
     });
 
     $scope.resetPassword = function() {
+        // hit enter without entering both fields - ignore
+        if (!$scope.passwordAndConfirmPasswordEntered()) return;
+        
         if ($scope.pwdChange) {
             if ($scope.password != $scope.confirmPassword) {
                 Notifications.error("Password and confirmation does not match.");
@@ -563,6 +566,10 @@ module.controller('UserCredentialsCtrl', function($scope, realm, user, $route, R
         });
     };
 
+    $scope.passwordAndConfirmPasswordEntered = function() {
+        return $scope.password && $scope.confirmPassword;
+    }
+    
     $scope.disableCredentialTypes = function() {
         Dialog.confirm('Disable credentials', 'Are you sure you want to disable these the users credentials?', function() {
             UserCredentials.disableCredentialTypes({ realm: realm.realm, userId: user.id }, $scope.disableableCredentialTypes, function() {
@@ -630,6 +637,7 @@ module.controller('UserFederationCtrl', function($scope, $location, $route, real
     console.log('UserFederationCtrl ++++****');
     $scope.realm = realm;
     $scope.providers = serverInfo.componentTypes['org.keycloak.storage.UserStorageProvider'];
+    $scope.instancesLoaded = false;
 
     if (!$scope.providers) $scope.providers = [];
     
@@ -709,7 +717,7 @@ module.controller('UserFederationCtrl', function($scope, $location, $route, real
                 data[i].isUserFederationProvider = true;
                 $scope.instances.push(data[i]);
             }
-            
+            $scope.instancesLoaded = true;
         });
     });
 
@@ -1788,7 +1796,7 @@ module.controller('LDAPUserStorageCtrl', function($scope, $location, Notificatio
 
     $scope.save = function() {
         $scope.changed = false;
-        if (!parseInt($scope.instance.config['batchSizeForSync'][0])) {
+        if (!$scope.instance.config['batchSizeForSync'] || !parseInt($scope.instance.config['batchSizeForSync'][0])) {
             $scope.instance.config['batchSizeForSync'] = [ DEFAULT_BATCH_SIZE ];
         } else {
             $scope.instance.config['batchSizeForSync'][0] = parseInt($scope.instance.config.batchSizeForSync).toString();
