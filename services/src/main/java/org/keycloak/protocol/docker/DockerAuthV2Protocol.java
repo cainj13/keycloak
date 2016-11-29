@@ -16,8 +16,10 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.docker.mapper.DockerAuthV2AttributeMapper;
+import org.keycloak.protocol.oidc.utils.WebOriginsUtils;
 import org.keycloak.representations.docker.DockerResponse;
 import org.keycloak.representations.docker.DockerResponseToken;
+import org.keycloak.saml.common.ErrorCodes;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.ClientSessionCode;
 import org.keycloak.util.TokenUtil;
@@ -119,24 +121,29 @@ public class DockerAuthV2Protocol implements LoginProtocol {
             }
         }
 
-        // Finally, construct the response to the docker client with the token + metadata
-        if (event.getEvent() != null && EventType.LOGIN.equals(event.getEvent().getType())) {
-            final KeyManager.ActiveKey activeKey = session.keys().getActiveKey(realm);
-            final String encodedToken = new JWSBuilder()
-                    .kid(activeKey.getKid())
-                    .type("JWT")
-                    .jsonContent(responseToken)
-                    .rsa256(activeKey.getPrivateKey());
-            final String expiresInIso8601String = new SimpleDateFormat(ISO_8601_DATE_FORMAT).format(new Date(responseToken.getIssuedAt() * 1000L));
+        try {
+            // Finally, construct the response to the docker client with the token + metadata
+            if (event.getEvent() != null && EventType.LOGIN.equals(event.getEvent().getType())) {
+                final KeyManager.ActiveKey activeKey = session.keys().getActiveKey(realm);
+                final String encodedToken = new JWSBuilder()
+                        .kid(new DockerKeyIdentifier(activeKey.getPublicKey()).toString())
+                        .type("JWT")
+                        .jsonContent(responseToken)
+                        .rsa256(activeKey.getPrivateKey());
+                final String expiresInIso8601String = new SimpleDateFormat(ISO_8601_DATE_FORMAT).format(new Date(responseToken.getIssuedAt() * 1000L));
 
-            final DockerResponse responseEntity = new DockerResponse()
-                    .setToken(encodedToken)
-                    .setExpires_in(accessTokenLifespan)
-                    .setIssued_at(expiresInIso8601String);
-            return new ResponseBuilderImpl().status(Response.Status.OK).header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON).entity(responseEntity).build();
-        } else {
-            logger.errorv("Unable to handle request for event type {0}.  Currently only LOGIN event types are supported by docker protocol.", event.getEvent() == null ? "null" : event.getEvent().getType());
-            throw new ErrorResponseException("invalid_request", "Event type not supported", Response.Status.BAD_REQUEST);
+                final DockerResponse responseEntity = new DockerResponse()
+                        .setToken(encodedToken)
+                        .setExpires_in(accessTokenLifespan)
+                        .setIssued_at(expiresInIso8601String);
+                return new ResponseBuilderImpl().status(Response.Status.OK).header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON).entity(responseEntity).build();
+            } else {
+                logger.errorv("Unable to handle request for event type {0}.  Currently only LOGIN event types are supported by docker protocol.", event.getEvent() == null ? "null" : event.getEvent().getType());
+                throw new ErrorResponseException("invalid_request", "Event type not supported", Response.Status.BAD_REQUEST);
+            }
+        } catch (final InstantiationException e) {
+            logger.errorv("Error attempting to create Key ID for Docker JOSE header: ", e.getMessage());
+            throw new ErrorResponseException("token_error", "Unable to construct JOSE header for JWT", Response.Status.INTERNAL_SERVER_ERROR);
         }
 
     }
