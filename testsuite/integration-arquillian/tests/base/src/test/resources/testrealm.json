@@ -100,6 +100,22 @@
       "clientRoles": {
         "test-app-scope": [ "test-app-allowed-by-scope", "test-app-disallowed-by-scope" ]
       }
+    },
+    {
+      "username" : "non-duplicate-email-user",
+      "enabled": true,
+      "email" : "non-duplicate-email-user@localhost",
+      "firstName": "Brian",
+      "lastName": "Cohen",
+      "credentials" : [
+        { "type" : "password",
+          "value" : "password" }
+      ],
+      "realmRoles": ["user", "offline_access"],
+      "clientRoles": {
+        "test-app": [ "customer-user" ],
+        "account": [ "view-profile", "manage-account" ]
+      }
     }
   ],
   "scopeMappings": [
@@ -304,6 +320,28 @@
         "/test-app-authz/*"
       ],
       "secret": "secret"
+    },
+    {
+      "clientId": "named-test-app",
+      "name": "My Named Test App",
+      "enabled": true,
+      "baseUrl": "http://localhost:8180/namedapp/base",
+      "redirectUris": [
+        "http://localhost:8180/namedapp/base/*"
+      ],
+      "adminUrl": "http://localhost:8180/namedapp/base/admin",
+      "secret": "password"
+    },
+    {
+      "clientId": "var-named-test-app",
+      "name": "Test App Named - ${client_account}",
+      "enabled": true,
+      "baseUrl": "http://localhost:8180/varnamedapp/base",
+      "redirectUris": [
+        "http://localhost:8180/varnamedapp/base/*"
+      ],
+      "adminUrl": "http://localhost:8180/varnamedapp/base/admin",
+      "secret": "password"
     }
   ],
   "roles" : {

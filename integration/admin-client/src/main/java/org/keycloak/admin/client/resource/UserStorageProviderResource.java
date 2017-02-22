@@ -30,11 +30,56 @@ import javax.ws.rs.core.MediaType;
  * @version $Revision: 1 $
  */
 public interface UserStorageProviderResource {
+    /**
+     * If the provider supports synchronization, this will invoke it.
+     *
+     * Action can be "triggerFullSync" or "triggerChangedUsersSync"
+     *
+     *
+     * @param componentId
+     * @param action
+     * @return
+     */
     @POST
     @Path("{componentId}/sync")
     @Produces(MediaType.APPLICATION_JSON)
-    SynchronizationResultRepresentation syncUsers(@QueryParam("action") String action);
+    SynchronizationResultRepresentation syncUsers(@PathParam("componentId") String componentId, @QueryParam("action") String action);
 
+    /**
+     * Remove imported users
+     *
+     *
+     * @param componentId
+     * @return
+     */
+    @POST
+    @Path("{componentId}/remove-imported-users")
+    @Produces(MediaType.APPLICATION_JSON)
+    void removeImportedUsers(@PathParam("componentId") String componentId);
+
+    /**
+     * Unlink imported users from a storage provider
+     *
+     * @param componentId
+     * @return
+     */
+    @POST
+    @Path("{componentId}/unlink-users")
+    @Produces(MediaType.APPLICATION_JSON)
+    void unlink(@PathParam("componentId") String componentId);
+
+    /**
+     * REST invocation for initiating sync for an ldap mapper.  This method may be moved in the future.  Right now
+     * don't have a good place for it.
+     *
+     * direction is "fedToKeycloak" or "keycloakToFed"
+     *
+     *
+     * @param componentId
+     * @param mapperId
+     * @param direction
+     * @return
+     */
     @POST
     @Path("{componentId}/mappers/{mapperId}/sync")
     @Produces(MediaType.APPLICATION_JSON)

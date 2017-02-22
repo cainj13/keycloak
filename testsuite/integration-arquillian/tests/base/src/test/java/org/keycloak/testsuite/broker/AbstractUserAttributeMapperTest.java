@@ -6,16 +6,7 @@ import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.IdentityProviderMapperRepresentation;
 import org.keycloak.representations.idm.IdentityProviderRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-import org.keycloak.testsuite.AbstractKeycloakTest;
-import org.keycloak.testsuite.Assert;
-import org.keycloak.testsuite.Retry;
-import org.keycloak.testsuite.pages.AccountPasswordPage;
-import org.keycloak.testsuite.pages.ErrorPage;
-import org.keycloak.testsuite.pages.IdpConfirmLinkPage;
-import org.keycloak.testsuite.pages.LoginPage;
-import org.keycloak.testsuite.pages.UpdateAccountInformationPage;
 import org.keycloak.testsuite.util.UserBuilder;
 
 import com.google.common.collect.ImmutableList;
@@ -26,17 +17,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
-import org.jboss.arquillian.graphene.page.Page;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
-import org.openqa.selenium.TimeoutException;
 
 import static org.junit.Assert.*;
 import static org.hamcrest.Matchers.*;
 import static org.keycloak.testsuite.admin.ApiUtil.*;
-import static org.keycloak.testsuite.broker.BrokerTestTools.encodeUrl;
-import static org.keycloak.testsuite.broker.BrokerTestTools.waitForPage;
 
 /**
  *
@@ -142,7 +128,7 @@ public abstract class AbstractUserAttributeMapperTest extends AbstractBaseBroker
             for (Map.Entry<String, List<String>> me : attrs.entrySet()) {
                 String mappedAttrName = ATTRIBUTE_NAME_TRANSLATION.get(me.getKey());
                 if (mappedAttrNames.contains(mappedAttrName)) {
-                    assertThat(userRep.getAttributes().get(mappedAttrName), equalTo(me.getValue()));
+                    assertThat(userRep.getAttributes().get(mappedAttrName), containsInAnyOrder(me.getValue().toArray()));
                 }
             }
         }
@@ -238,13 +224,32 @@ public abstract class AbstractUserAttributeMapperTest extends AbstractBaseBroker
     }
 
     @Test
-    @Ignore("Unignore to test KEYCLOAK-3648")
     public void testBasicMappingMultipleValues() {
         testValueMapping(ImmutableMap.<String, List<String>>builder()
           .put(ATTRIBUTE_TO_MAP_NAME, ImmutableList.<String>builder().add("value 1").add("value 2").build())
           .build(),
           ImmutableMap.<String, List<String>>builder()
           .put(ATTRIBUTE_TO_MAP_NAME, ImmutableList.<String>builder().add("second value").add("second value 2").build())
+          .build()
+        );
+    }
+
+    @Test
+    public void testAddBasicMappingMultipleValues() {
+        testValueMapping(ImmutableMap.<String, List<String>>builder()
+          .build(),
+          ImmutableMap.<String, List<String>>builder()
+          .put(ATTRIBUTE_TO_MAP_NAME, ImmutableList.<String>builder().add("second value").add("second value 2").build())
+          .build()
+        );
+    }
+
+    @Test
+    public void testDeleteBasicMappingMultipleValues() {
+        testValueMapping(ImmutableMap.<String, List<String>>builder()
+          .put(ATTRIBUTE_TO_MAP_NAME, ImmutableList.<String>builder().add("second value").add("second value 2").build())
+          .build(),
+          ImmutableMap.<String, List<String>>builder()
           .build()
         );
     }

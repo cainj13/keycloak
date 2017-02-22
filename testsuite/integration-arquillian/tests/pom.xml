@@ -24,7 +24,7 @@
     <parent>
         <groupId>org.keycloak.testsuite</groupId>
         <artifactId>integration-arquillian</artifactId>
-        <version>2.4.1.Final-SNAPSHOT</version>
+        <version>3.0.0.CR1-SNAPSHOT</version>
     </parent>
 
     <packaging>pom</packaging>
@@ -64,13 +64,16 @@
         
         <auth.server.remote>false</auth.server.remote>
         <auth.server.profile/>
+        <auth.server.feature/>
     
         <adapter.test.props/>
         <migration.import.properties/>
         <examples.home>${project.build.directory}/examples</examples.home>
 
-        <browser>phantomjs</browser>
+        <browser>htmlUnit</browser>
+        <htmlUnitBrowserVersion>chrome</htmlUnitBrowserVersion>
         <firefox_binary>/usr/bin/firefox</firefox_binary>
+        <phantomjs.cli.args>--ignore-ssl-errors=true --web-security=false</phantomjs.cli.args>
 
         <frontend.console.output>true</frontend.console.output>
         <backends.console.output>true</backends.console.output>
@@ -165,6 +168,7 @@
                             <auth.server.adapter.impl.class>${auth.server.adapter.impl.class}</auth.server.adapter.impl.class>
                             
                             <auth.server.profile>${auth.server.profile}</auth.server.profile>
+                            <auth.server.feature>${auth.server.feature}</auth.server.feature>
                             
                             <frontend.console.output>${frontend.console.output}</frontend.console.output>
                             <backends.console.output>${backend.console.output}</backends.console.output>
@@ -179,7 +183,9 @@
                             <test.intermittent>${test.intermittent}</test.intermittent>
 
                             <browser>${browser}</browser>
+                            <htmlUnitBrowserVersion>${htmlUnitBrowserVersion}</htmlUnitBrowserVersion>
                             <firefox_binary>${firefox_binary}</firefox_binary>
+                            <phantomjs.cli.args>${phantomjs.cli.args}</phantomjs.cli.args>
 
                             <project.version>${project.version}</project.version>
                             <migration.project.version>${migration.project.version}</migration.project.version>
@@ -196,6 +202,29 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jboss.arquillian.container</groupId>
+            <artifactId>arquillian-container-karaf-managed</artifactId>
+            <version>2.1.0.CR18</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.arquillian.container</groupId>
+            <artifactId>arquillian-container-osgi</artifactId>
+            <version>2.1.0.CR18</version>
+        </dependency>
+        <dependency>
+            <groupId>org.osgi</groupId>
+            <artifactId>org.osgi.core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.osgi</groupId>
+            <artifactId>org.osgi.enterprise</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
 
     <profiles>
 
@@ -261,6 +290,41 @@
             <properties>
                 <auth.server.profile>-Dkeycloak.profile=${keycloak.profile}</auth.server.profile>
             </properties>
+        </profile>
+
+        <!--
+            profile that enables/disables specified feature, for more details see 
+            https://keycloak.gitbooks.io/server-installation-and-configuration/content/topics/profiles.html 
+        -->
+        <profile>
+            <id>auth-server-enable-disable-feature</id>
+            <properties>
+                <auth.server.feature>-Dkeycloak.profile.feature.${feature.name}=${feature.value}</auth.server.feature>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-enforcer-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>enforce</goal>
+                                </goals>
+                                <configuration>
+                                    <rules>
+                                        <requireProperty>
+                                            <property>feature.name</property>
+                                        </requireProperty>
+                                        <requireProperty>
+                                            <property>feature.value</property>
+                                        </requireProperty>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
 
         <profile>
@@ -429,7 +493,7 @@
         <profile>
             <id>auth-server-migration</id>
             <properties>
-                <migration.import.file>src/test/resources/migration-test/migration-realm-${migrated.auth.server.version}.json</migration.import.file>
+                <migration.import.file>target/test-classes/migration-test/migration-realm-${migrated.auth.server.version}.json</migration.import.file>
                 <migration.import.props.previous>
                     -Dkeycloak.migration.action=import 
                     -Dkeycloak.migration.provider=singleFile
@@ -512,7 +576,7 @@
                 </property>
             </activation>
             <properties>
-                <migration.import.file>src/test/resources/migration-test/migration-realm-${migrated.auth.server.version}.json</migration.import.file>
+                <migration.import.file>target/test-classes/migration-test/migration-realm-${migrated.auth.server.version}.json</migration.import.file>
                 <migration.import.properties>
                     -Dkeycloak.migration.action=import 
                     -Dkeycloak.migration.provider=singleFile
@@ -561,7 +625,7 @@
                 </property>
             </activation>
             <properties>
-                <migration.import.file>src/test/resources/migration-test/migration-realm-${migrated.version.import.file.suffix}.json</migration.import.file>
+                <migration.import.file>target/test-classes/migration-test/migration-realm-${migrated.version.import.file.suffix}.json</migration.import.file>
             </properties>
         </profile>
       
@@ -680,6 +744,12 @@
                     <groupId>com.h2database</groupId>
                     <artifactId>h2</artifactId>
                     <scope>compile</scope>
+                </dependency>
+
+                <dependency>
+                    <groupId>org.apache.sshd</groupId>
+                    <artifactId>sshd-core</artifactId>
+                    <version>1.2.0</version>
                 </dependency>
 
                 <!-- Email Test Server -->

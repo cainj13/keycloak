@@ -380,34 +380,47 @@ public class JpaUserProvider implements UserProvider, UserCredentialStore {
                 .setParameter("realmId", realm.getId()).executeUpdate();
     }
 
-    public void removeUserDataByLink(RealmModel realm, String linkId) {
+    @Override
+    public void removeImportedUsers(RealmModel realm, String storageProviderId) {
         int num = em.createNamedQuery("deleteUserRoleMappingsByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
         num = em.createNamedQuery("deleteUserRequiredActionsByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
         num = em.createNamedQuery("deleteFederatedIdentityByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
         num = em.createNamedQuery("deleteCredentialAttributeByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
         num = em.createNamedQuery("deleteCredentialsByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
         num = em.createNamedQuery("deleteUserAttributesByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
+                .executeUpdate();
+        num = em.createNamedQuery("deleteUserGroupMembershipsByRealmAndLink")
+                .setParameter("realmId", realm.getId())
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
         num = em.createNamedQuery("deleteUsersByRealmAndLink")
                 .setParameter("realmId", realm.getId())
-                .setParameter("link", linkId)
+                .setParameter("link", storageProviderId)
+                .executeUpdate();
+    }
+
+    @Override
+    public void unlinkUsers(RealmModel realm, String storageProviderId) {
+        em.createNamedQuery("unlinkUsers")
+                .setParameter("realmId", realm.getId())
+                .setParameter("link", storageProviderId)
                 .executeUpdate();
     }
 
@@ -476,7 +489,12 @@ public class JpaUserProvider implements UserProvider, UserCredentialStore {
         query.setParameter("email", email.toLowerCase());
         query.setParameter("realmId", realm.getId());
         List<UserEntity> results = query.getResultList();
-        return results.isEmpty() ? null : new UserAdapter(session, realm, em, results.get(0));
+        
+        if (results.isEmpty()) return null;
+        
+        ensureEmailConstraint(results, realm);
+        
+        return new UserAdapter(session, realm, em, results.get(0));
     }
 
      @Override
@@ -705,7 +723,7 @@ public class JpaUserProvider implements UserProvider, UserCredentialStore {
     @Override
     public void preRemove(RealmModel realm, ComponentModel component) {
         if (!component.getProviderType().equals(UserStorageProvider.class.getName())) return;
-        removeUserDataByLink(realm, component.getId());
+        removeImportedUsers(realm, component.getId());
 
     }
 
@@ -876,7 +894,25 @@ public class JpaUserProvider implements UserProvider, UserCredentialStore {
         return toModel(results.get(0));
     }
 
-
-
-
+    // Could override this to provide a custom behavior.
+    protected void ensureEmailConstraint(List<UserEntity> users, RealmModel realm) {
+        UserEntity user = users.get(0);
+        
+        if (users.size() > 1) {
+            // Realm settings have been changed from allowing duplicate emails to not allowing them
+            // but duplicates haven't been removed.
+            throw new ModelDuplicateException("Multiple users with email '" + user.getEmail() + "' exist in Keycloak.");
+        }
+        
+        if (realm.isDuplicateEmailsAllowed()) {
+            return;
+        }
+     
+        if (user.getEmail() != null && !user.getEmail().equals(user.getEmailConstraint())) {
+            // Realm settings have been changed from allowing duplicate emails to not allowing them.
+            // We need to update the email constraint to reflect this change in the user entities.
+            user.setEmailConstraint(user.getEmail());
+            em.persist(user);
+        }  
+    }
 }

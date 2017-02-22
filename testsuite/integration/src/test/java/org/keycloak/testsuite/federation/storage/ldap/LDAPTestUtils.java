@@ -128,7 +128,7 @@ public class LDAPTestUtils {
     }
 
     public static void updateLDAPPassword(LDAPStorageProvider ldapProvider, LDAPObject ldapUser, String password) {
-        ldapProvider.getLdapIdentityStore().updatePassword(ldapUser, password);
+        ldapProvider.getLdapIdentityStore().updatePassword(ldapUser, password, null);
 
         // Enable MSAD user through userAccountControls
         if (ldapProvider.getLdapIdentityStore().getConfig().isActiveDirectory()) {
@@ -141,8 +141,17 @@ public class LDAPTestUtils {
         return (LDAPStorageProvider)keycloakSession.getProvider(UserStorageProvider.class, ldapFedModel);
     }
 
-    public static void assertUserImported(UserProvider userProvider, RealmModel realm, String username, String expectedFirstName, String expectedLastName, String expectedEmail, String expectedPostalCode) {
+    public static UserModel assertUserImported(UserProvider userProvider, RealmModel realm, String username, String expectedFirstName, String expectedLastName, String expectedEmail, String expectedPostalCode) {
         UserModel user = userProvider.getUserByUsername(username, realm);
+        Assert.assertNotNull(user);
+        Assert.assertEquals(expectedFirstName, user.getFirstName());
+        Assert.assertEquals(expectedLastName, user.getLastName());
+        Assert.assertEquals(expectedEmail, user.getEmail());
+        Assert.assertEquals(expectedPostalCode, user.getFirstAttribute("postal_code"));
+        return user;
+    }
+
+    public static void assertLoaded(UserModel user, String username, String expectedFirstName, String expectedLastName, String expectedEmail, String expectedPostalCode) {
         Assert.assertNotNull(user);
         Assert.assertEquals(expectedFirstName, user.getFirstName());
         Assert.assertEquals(expectedLastName, user.getLastName());
@@ -238,11 +247,11 @@ public class LDAPTestUtils {
         ComponentModel mapperModel = getSubcomponentByName(realm, providerModel, "realmRolesMapper");
         RoleLDAPStorageMapper roleMapper = getRoleMapper(mapperModel, ldapProvider, realm);
 
-        roleMapper.syncDataFromFederationProviderToKeycloak();
+        roleMapper.syncDataFromFederationProviderToKeycloak(realm);
 
         mapperModel = getSubcomponentByName(realm, providerModel, "financeRolesMapper");
         roleMapper = getRoleMapper(mapperModel, ldapProvider, realm);
-        roleMapper.syncDataFromFederationProviderToKeycloak();
+        roleMapper.syncDataFromFederationProviderToKeycloak(realm);
     }
 
     public static void removeAllLDAPUsers(LDAPStorageProvider ldapProvider, RealmModel realm) {
@@ -296,11 +305,11 @@ public class LDAPTestUtils {
     }
 
     public static GroupLDAPStorageMapper getGroupMapper(ComponentModel mapperModel, LDAPStorageProvider ldapProvider, RealmModel realm) {
-        return new GroupLDAPStorageMapper(mapperModel, ldapProvider, realm, new GroupLDAPStorageMapperFactory());
+        return new GroupLDAPStorageMapper(mapperModel, ldapProvider, new GroupLDAPStorageMapperFactory());
     }
 
     public static RoleLDAPStorageMapper getRoleMapper(ComponentModel mapperModel, LDAPStorageProvider ldapProvider, RealmModel realm) {
-        return new RoleLDAPStorageMapper(mapperModel, ldapProvider, realm, new RoleLDAPStorageMapperFactory());
+        return new RoleLDAPStorageMapper(mapperModel, ldapProvider, new RoleLDAPStorageMapperFactory());
     }
 
 

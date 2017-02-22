@@ -19,8 +19,11 @@ package org.keycloak.testsuite.admin.group;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.keycloak.admin.client.resource.GroupResource;
+import org.keycloak.admin.client.resource.GroupsResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.RoleMappingResource;
+import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.Constants;
@@ -149,6 +152,32 @@ public class GroupTest extends AbstractGroupTest {
     }
 
     @Test
+    public void doNotAllowSameGroupNameAtSameLevel() throws Exception {
+        RealmResource realm = adminClient.realms().realm("test");
+        
+        GroupRepresentation topGroup = new GroupRepresentation();
+        topGroup.setName("top");
+        topGroup = createGroup(realm, topGroup);
+        
+        GroupRepresentation anotherTopGroup = new GroupRepresentation();
+        anotherTopGroup.setName("top");
+        Response response = realm.groups().add(anotherTopGroup);
+        assertEquals(409, response.getStatus()); // conflict status 409 - same name not allowed
+        
+        GroupRepresentation level2Group = new GroupRepresentation();
+        level2Group.setName("level2");
+        response = realm.groups().group(topGroup.getId()).subGroup(level2Group);
+        response.close();
+        assertEquals(201, response.getStatus()); // created status
+
+        GroupRepresentation anotherlevel2Group = new GroupRepresentation();
+        anotherlevel2Group.setName("level2");
+        response = realm.groups().group(topGroup.getId()).subGroup(anotherlevel2Group);
+        response.close();
+        assertEquals(409, response.getStatus()); // conflict status 409 - same name not allowed
+    }
+    
+    @Test
     public void createAndTestGroups() throws Exception {
         RealmResource realm = adminClient.realms().realm("test");
         {
@@ -176,7 +205,7 @@ public class GroupTest extends AbstractGroupTest {
         GroupRepresentation topGroup = new GroupRepresentation();
         topGroup.setName("top");
         topGroup = createGroup(realm, topGroup);
-
+        
         List<RoleRepresentation> roles = new LinkedList<>();
         roles.add(topRole);
         realm.groups().group(topGroup.getId()).roles().realmLevel().add(roles);
@@ -577,5 +606,31 @@ public class GroupTest extends AbstractGroupTest {
 
         assertThat(userClient.realms().findAll(),  // Any admin operation will do
           not(empty()));
+    }
+
+    @Test
+    public void defaultMaxResults() {
+        GroupsResource groups = adminClient.realms().realm("test").groups();
+        Response response = groups.add(GroupBuilder.create().name("test").build());
+        String groupId = ApiUtil.getCreatedId(response);
+        response.close();
+
+        GroupResource group = groups.group(groupId);
+
+        UsersResource users = adminClient.realms().realm("test").users();
+
+        for (int i = 0; i < 110; i++) {
+            Response r = users.create(UserBuilder.create().username("test-" + i).build());
+            String userId = ApiUtil.getCreatedId(r);
+            r.close();
+
+            users.get(userId).joinGroup(groupId);
+        }
+
+        assertEquals(100, group.members(null, null).size());
+        assertEquals(100, group.members().size());
+        assertEquals(105, group.members(0, 105).size());
+        assertEquals(110, group.members(0, 1000).size());
+        assertEquals(110, group.members(-1, -2).size());
     }
 }

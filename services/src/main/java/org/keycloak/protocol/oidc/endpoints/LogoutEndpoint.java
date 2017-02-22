@@ -113,18 +113,11 @@ public class LogoutEndpoint {
         }
 
         UserSessionModel userSession = null;
-        boolean error = false;
         if (encodedIdToken != null) {
             try {
-                IDToken idToken = tokenManager.verifyIDToken(session, realm, encodedIdToken);
+                IDToken idToken = tokenManager.verifyIDTokenSignature(session, realm, encodedIdToken);
                 userSession = session.sessions().getUserSession(realm, idToken.getSessionState());
-                if (userSession == null) {
-                    error = true;
-                }
             } catch (OAuthErrorException e) {
-                error = true;
-            }
-            if (error) {
                 event.event(EventType.LOGOUT);
                 event.error(Errors.INVALID_TOKEN);
                 return ErrorPage.error(session, Messages.SESSION_NOT_ACTIVE);
@@ -196,7 +189,7 @@ public class LogoutEndpoint {
             event.error(Errors.INVALID_TOKEN);
             throw new ErrorResponseException(e.getError(), e.getDescription(), Response.Status.BAD_REQUEST);
         }
-        return Cors.add(request, Response.noContent()).auth().allowedOrigins(client).allowedMethods("POST").exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS).build();
+        return Cors.add(request, Response.noContent()).auth().allowedOrigins(uriInfo, client).allowedMethods("POST").exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS).build();
     }
 
     private void logout(UserSessionModel userSession) {

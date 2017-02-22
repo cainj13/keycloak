@@ -32,7 +32,7 @@
     </description>
     <groupId>org.keycloak</groupId>
     <artifactId>keycloak-parent</artifactId>
-    <version>2.4.1.Final-SNAPSHOT</version>
+    <version>3.0.0.CR1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -47,10 +47,11 @@
         <jboss.as.version>7.2.0.Final</jboss.as.version>
         <wildfly.version>10.0.0.Final</wildfly.version>
 
-        <aesh.version>0.66.4</aesh.version>
+        <aesh.version>0.66.12</aesh.version>
         <apache.httpcomponents.version>4.5</apache.httpcomponents.version>
         <apache.httpcomponents.httpcore.version>4.4.1</apache.httpcomponents.httpcore.version>
         <apache.mime4j.version>0.6</apache.mime4j.version>
+        <jboss.dmr.version>1.3.0.Final</jboss.dmr.version>
         <bouncycastle.version>1.52</bouncycastle.version>
         <cxf.version>3.1.5</cxf.version>
         <dom4j.version>1.6.1</dom4j.version>
@@ -89,7 +90,6 @@
         <freemarker.version>2.3.23</freemarker.version>
         <jetty9.version>9.1.0.v20131115</jetty9.version>
         <liquibase.version>3.4.1</liquibase.version>
-        <mongo.driver.version>3.2.0</mongo.driver.version>
         <mysql.version>5.1.29</mysql.version>
         <osgi.version>4.2.0</osgi.version>
         <pax.web.version>4.2.4</pax.web.version>
@@ -110,14 +110,14 @@
         <subethasmtp.version>3.1.7</subethasmtp.version>
 
         <!-- Maven Plugins -->
-        <embedmongo.plugin.version>0.1.12</embedmongo.plugin.version>
         <enforcer.plugin.version>1.4</enforcer.plugin.version>
+        <replacer.plugin.version>1.3.5</replacer.plugin.version>
         <jboss.as.plugin.version>7.5.Final</jboss.as.plugin.version>
         <jmeter.plugin.version>1.9.0</jmeter.plugin.version>
         <jmeter.analysis.plugin.version>1.0.4</jmeter.analysis.plugin.version>
         <minify.plugin.version>1.7.2</minify.plugin.version>
         <osgi.bundle.plugin.version>2.3.7</osgi.bundle.plugin.version>
-        <wildfly.plugin.version>1.0.1.Final</wildfly.plugin.version>
+        <wildfly.plugin.version>1.1.0.Beta1</wildfly.plugin.version>
         <nexus.staging.plugin.version>1.6.5</nexus.staging.plugin.version>
 
         <!-- Surefire Settings -->
@@ -170,6 +170,7 @@
     </contributors>
 
     <modules>
+        <module>boms</module>
         <module>common</module>
         <module>core</module>
         <module>dependencies</module>
@@ -189,10 +190,16 @@
         <module>authz</module>
         <module>examples</module>
         <module>testsuite</module>
+        <module>misc</module>
     </modules>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.jboss</groupId>
+                <artifactId>jboss-dmr</artifactId>
+                <version>${jboss.dmr.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.github.relaxng</groupId>
                 <artifactId>relaxngDatatype</artifactId>
@@ -428,15 +435,6 @@
                 <version>${google.zxing.version}</version>
             </dependency>
 
-            <!-- Authorization Drools Policy Provider -->
-            <dependency>
-                <groupId>org.drools</groupId>
-                <artifactId>drools-bom</artifactId>
-                <type>pom</type>
-                <version>${version.org.drools}</version>
-                <scope>import</scope>
-            </dependency>
-
             <!-- Email Test Servers -->
             <dependency>
                 <groupId>com.icegreen</groupId>
@@ -485,11 +483,6 @@
                 <artifactId>selenium-chrome-driver</artifactId>
                 <version>${selenium.version}</version>
                 <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.mongodb</groupId>
-                <artifactId>mongo-java-driver</artifactId>
-                <version>${mongo.driver.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.jmeter</groupId>
@@ -950,11 +943,6 @@
             </dependency>
             <dependency>
                 <groupId>org.keycloak</groupId>
-                <artifactId>keycloak-model-mongo</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.keycloak</groupId>
                 <artifactId>keycloak-model-infinispan</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -1323,6 +1311,11 @@
             </dependency>
             <dependency>
                 <groupId>org.keycloak</groupId>
+                <artifactId>keycloak-admin-cli</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.keycloak</groupId>
                 <artifactId>keycloak-client-cli-dist</artifactId>
                 <version>${project.version}</version>
                 <type>zip</type>
@@ -1369,6 +1362,11 @@
                     </configuration>
                 </plugin>
                 <plugin>
+                    <groupId>com.google.code.maven-replacer-plugin</groupId>
+                    <artifactId>maven-replacer-plugin</artifactId>
+                    <version>${replacer.plugin.version}</version>
+                </plugin>
+                <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-install-plugin</artifactId>
                     <configuration>
@@ -1384,11 +1382,6 @@
                     <groupId>com.lazerycode.jmeter</groupId>
                     <artifactId>jmeter-analysis-maven-plugin</artifactId>
                     <version>${jmeter.analysis.plugin.version}</version>
-                </plugin>
-                <plugin>
-                    <groupId>com.github.joelittlejohn.embedmongo</groupId>
-                    <artifactId>embedmongo-maven-plugin</artifactId>
-                    <version>${embedmongo.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.jboss.as.plugins</groupId>

@@ -18,6 +18,17 @@
 
 package org.keycloak.models.authorization.infinispan;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
 import org.infinispan.Cache;
 import org.keycloak.authorization.model.Resource;
 import org.keycloak.authorization.model.ResourceServer;
@@ -28,14 +39,7 @@ import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.authorization.infinispan.InfinispanStoreFactoryProvider.CacheTransaction;
 import org.keycloak.models.authorization.infinispan.entities.CachedResource;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.stream.Collectors;
+import org.keycloak.models.cache.authorization.CachedStoreFactoryProvider;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
@@ -43,61 +47,67 @@ import java.util.stream.Collectors;
 public class CachedResourceStore implements ResourceStore {
 
     private static final String RESOURCE_ID_CACHE_PREFIX = "rsc-id-";
-    private static final String RESOURCE_OWNER_CACHE_PREFIX = "rsc-owner-";
+    private static final String RESOURCE_NAME_CACHE_PREFIX = "rsc-name-";
 
     private final KeycloakSession session;
     private final CacheTransaction transaction;
+    private final List<String> cacheKeys;
     private StoreFactory storeFactory;
     private ResourceStore delegate;
-    private final Cache<String, List> cache;
+    private final Cache<String, Map<String, List<CachedResource>>> cache;
 
-    public CachedResourceStore(KeycloakSession session, CacheTransaction transaction) {
+    public CachedResourceStore(KeycloakSession session, CacheTransaction transaction, StoreFactory storeFactory) {
         this.session = session;
         InfinispanConnectionProvider provider = session.getProvider(InfinispanConnectionProvider.class);
         this.cache = provider.getCache(InfinispanConnectionProvider.AUTHORIZATION_CACHE_NAME);
         this.transaction = transaction;
+        cacheKeys = new ArrayList<>();
+        cacheKeys.add("findByOwner");
+        cacheKeys.add("findByUri");
+        cacheKeys.add("findByName");
+        this.storeFactory = storeFactory;
     }
 
     @Override
     public Resource create(String name, ResourceServer resourceServer, String owner) {
         Resource resource = getDelegate().create(name, getStoreFactory().getResourceServerStore().findById(resourceServer.getId()), owner);
 
-        this.transaction.whenRollback(() -> cache.remove(getCacheKeyForResource(resource.getId())));
+        this.transaction.whenRollback(() -> {
+            resolveResourceServerCache(resourceServer.getId()).remove(getCacheKeyForResource(resource.getId()));
+        });
+
+        this.transaction.whenCommit(() -> {
+            invalidateCache(resourceServer.getId());
+        });
 
         return createAdapter(new CachedResource(resource));
     }
 
     @Override
     public void delete(String id) {
-        List<CachedResource> removed = this.cache.remove(getCacheKeyForResource(id));
-
-        if (removed != null) {
-            CachedResource cachedResource = removed.get(0);
-            List<String> byOwner = this.cache.get(getResourceOwnerCacheKey(cachedResource.getOwner()));
-
-            if (byOwner != null) {
-                byOwner.remove(id);
-
-                if (byOwner.isEmpty()) {
-                    this.cache.remove(getResourceOwnerCacheKey(cachedResource.getOwner()));
-                }
-            }
+        Resource resource = getDelegate().findById(id, null);
+        if (resource == null) {
+            return;
         }
-
+        ResourceServer resourceServer = resource.getResourceServer();
         getDelegate().delete(id);
+        this.transaction.whenCommit(() -> {
+            invalidateCache(resourceServer.getId());
+        });
     }
 
     @Override
-    public Resource findById(String id) {
+    public Resource findById(String id, String resourceServerId) {
         String cacheKeyForResource = getCacheKeyForResource(id);
-        List<CachedResource> cached = this.cache.get(cacheKeyForResource);
+        List<CachedResource> cached = resolveResourceServerCache(resourceServerId).get(cacheKeyForResource);
 
         if (cached == null) {
-            Resource resource = getDelegate().findById(id);
+            Resource resource = getDelegate().findById(id, resourceServerId);
 
             if (resource != null) {
-                updateCachedIds(getResourceOwnerCacheKey(resource.getOwner()), resource, false);
-                return createAdapter(updateResourceCache(resource));
+                CachedResource cachedResource = new CachedResource(resource);
+                resolveResourceServerCache(resourceServerId).put(cacheKeyForResource, Arrays.asList(cachedResource));
+                return createAdapter(cachedResource);
             }
 
             return null;
@@ -107,20 +117,18 @@ public class CachedResourceStore implements ResourceStore {
     }
 
     @Override
-    public List<Resource> findByOwner(String ownerId) {
+    public List<Resource> findByOwner(String ownerId, String resourceServerId) {
+        return cacheResult(resourceServerId, new StringBuilder("findByOwner").append(ownerId).toString(), () -> getDelegate().findByOwner(ownerId, resourceServerId));
+    }
 
-        for (Resource resource : getDelegate().findByOwner(ownerId)) {
-            updateCachedIds(getResourceOwnerCacheKey(ownerId), resource, true);
-        }
-
-        return  ((List<String>) this.cache.getOrDefault(getResourceOwnerCacheKey(ownerId), Collections.emptyList())).stream().map(this::findById)
-                        .filter(resource -> resource != null)
-                        .collect(Collectors.toList());
+    @Override
+    public List<Resource> findByUri(String uri, String resourceServerId) {
+        return cacheResult(resourceServerId, new StringBuilder("findByUri").append(uri).toString(), () -> getDelegate().findByUri(uri, resourceServerId));
     }
 
     @Override
     public List<Resource> findByResourceServer(String resourceServerId) {
-        return getDelegate().findByResourceServer(resourceServerId).stream().map(resource -> findById(resource.getId())).collect(Collectors.toList());
+        return getDelegate().findByResourceServer(resourceServerId);
     }
 
     @Override
@@ -129,41 +137,41 @@ public class CachedResourceStore implements ResourceStore {
     }
 
     @Override
-    public List<Resource> findByScope(String... id) {
-        return getDelegate().findByScope(id).stream().map(resource -> findById(resource.getId())).collect(Collectors.toList());
+    public List<Resource> findByScope(List<String> id, String resourceServerId) {
+        return getDelegate().findByScope(id, resourceServerId);
     }
 
     @Override
     public Resource findByName(String name, String resourceServerId) {
-        for (Entry entry : this.cache.entrySet()) {
-            String cacheKey = (String) entry.getKey();
+        String cacheKeyForResource = getCacheKeyForResourceName(name, resourceServerId);
+        List<CachedResource> cached = resolveResourceServerCache(resourceServerId).get(cacheKeyForResource);
 
-            if (cacheKey.startsWith(RESOURCE_ID_CACHE_PREFIX)) {
-                List<CachedResource> value = (List<CachedResource>) entry.getValue();
-                CachedResource resource = value.get(0);
+        if (cached == null) {
+            Resource resource = getDelegate().findByName(name, resourceServerId);
 
-                if (resource.getResourceServerId().equals(resourceServerId) && resource.getName().equals(name)) {
-                    return findById(resource.getId());
-                }
+            if (resource != null) {
+                invalidateCache(resourceServerId);
+                resolveResourceServerCache(resourceServerId).put(cacheKeyForResource, Arrays.asList(new CachedResource(resource)));
+                return findById(resource.getId(), resourceServerId);
             }
+
+            return null;
         }
 
-        Resource resource = getDelegate().findByName(name, resourceServerId);
-
-        if (resource != null) {
-            return findById(updateResourceCache(resource).getId());
-        }
-
-        return null;
+        return createAdapter(cached.get(0));
     }
 
     @Override
-    public List<Resource> findByType(String type) {
-        return  getDelegate().findByType(type).stream().map(resource -> findById(resource.getId())).collect(Collectors.toList());
+    public List<Resource> findByType(String type, String resourceServerId) {
+        return  getDelegate().findByType(type, resourceServerId);
     }
 
     private String getCacheKeyForResource(String id) {
         return RESOURCE_ID_CACHE_PREFIX + id;
+    }
+
+    private String getCacheKeyForResourceName(String name, String resourceServerId) {
+        return RESOURCE_NAME_CACHE_PREFIX + name + "-" + resourceServerId;
     }
 
     private ResourceStore getDelegate() {
@@ -175,10 +183,6 @@ public class CachedResourceStore implements ResourceStore {
     }
 
     private StoreFactory getStoreFactory() {
-        if (this.storeFactory == null) {
-            this.storeFactory = session.getProvider(StoreFactory.class);
-        }
-
         return this.storeFactory;
     }
 
@@ -228,13 +232,15 @@ public class CachedResourceStore implements ResourceStore {
 
             @Override
             public List<Scope> getScopes() {
-                List<Scope> scopes = new ArrayList<>();
+                if (scopes == null) {
+                    scopes = new ArrayList<>();
 
-                for (String id : cached.getScopesIds()) {
-                    Scope cached = getStoreFactory().getScopeStore().findById(id);
+                    for (String id : cached.getScopesIds()) {
+                        Scope scope = getCachedStoreFactory().getScopeStore().findById(id, cached.getResourceServerId());
 
-                    if (cached != null) {
-                        scopes.add(cached);
+                        if (scope != null) {
+                            scopes.add(scope);
+                        }
                     }
                 }
 
@@ -254,7 +260,7 @@ public class CachedResourceStore implements ResourceStore {
 
             @Override
             public ResourceServer getResourceServer() {
-                return getStoreFactory().getResourceServerStore().findById(cached.getResourceServerId());
+                return getCachedStoreFactory().getResourceServerStore().findById(cached.getResourceServerId());
             }
 
             @Override
@@ -264,15 +270,21 @@ public class CachedResourceStore implements ResourceStore {
 
             @Override
             public void updateScopes(Set<Scope> scopes) {
-                getDelegateForUpdate().updateScopes(scopes.stream().map(scope -> getStoreFactory().getScopeStore().findById(scope.getId())).collect(Collectors.toSet()));
+                getDelegateForUpdate().updateScopes(scopes.stream().map(scope -> getStoreFactory().getScopeStore().findById(scope.getId(), cached.getResourceServerId())).collect(Collectors.toSet()));
                 cached.updateScopes(scopes);
             }
 
             private Resource getDelegateForUpdate() {
                 if (this.updated == null) {
-                    this.updated = getDelegate().findById(getId());
+                    String resourceServerId = cached.getResourceServerId();
+                    this.updated = getDelegate().findById(getId(), resourceServerId);
                     if (this.updated == null) throw new IllegalStateException("Not found in database");
-                    transaction.whenCommit(() -> cache.remove(getCacheKeyForResource(getId())));
+                    transaction.whenCommit(() -> {
+                        invalidateCache(resourceServerId);
+                    });
+                    transaction.whenRollback(() -> {
+                        resolveResourceServerCache(resourceServerId).remove(getCacheKeyForResource(cached.getId()));
+                    });
                 }
 
                 return this.updated;
@@ -280,34 +292,39 @@ public class CachedResourceStore implements ResourceStore {
         };
     }
 
-    private CachedResource updateResourceCache(Resource resource) {
-        CachedResource cached = new CachedResource(resource);
-        List cache = new ArrayList<>();
-
-        cache.add(cached);
-
-        this.cache.put(getCacheKeyForResource(resource.getId()), cache);
-
-        return cached;
+    private CachedStoreFactoryProvider getCachedStoreFactory() {
+        return session.getProvider(CachedStoreFactoryProvider.class);
     }
 
-    private void updateCachedIds(String cacheKey, Resource resource, boolean create) {
-        List<String> cached = this.cache.get(cacheKey);
+    private List<Resource> cacheResult(String resourceServerId, String key, Supplier<List<Resource>> provider) {
+        List<CachedResource> cached = resolveResourceServerCache(resourceServerId).computeIfAbsent(key, (Function<String, List<CachedResource>>) o -> {
+            List<Resource> result = provider.get();
+
+            if (result.isEmpty()) {
+                return null;
+            }
+
+            return result.stream().map(resource -> new CachedResource(resource)).collect(Collectors.toList());
+        });
 
         if (cached == null) {
-            if (!create) {
-                return;
-            }
-            cached = new ArrayList<>();
-            this.cache.put(cacheKey, cached);
+            return Collections.emptyList();
         }
 
-        if (cached != null && !cached.contains(resource.getId())) {
-            cached.add(resource.getId());
+        List<Resource> adapters = new ArrayList<>();
+
+        for (CachedResource resource : cached) {
+            adapters.add(createAdapter(resource));
         }
+
+        return adapters;
     }
 
-    private String getResourceOwnerCacheKey(String ownerId) {
-        return RESOURCE_OWNER_CACHE_PREFIX + ownerId;
+    private void invalidateCache(String resourceServerId) {
+        cache.remove(resourceServerId);
+    }
+
+    private Map<String, List<CachedResource>> resolveResourceServerCache(String id) {
+        return cache.computeIfAbsent(id, key -> new HashMap<>());
     }
 }

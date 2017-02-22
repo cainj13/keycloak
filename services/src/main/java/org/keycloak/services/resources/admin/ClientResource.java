@@ -82,6 +82,7 @@ import static java.lang.Boolean.TRUE;
 /**
  * Base resource class for managing one particular client of a realm.
  *
+ * @resource Clients
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
@@ -154,13 +155,21 @@ public class ClientResource {
     }
 
     public void updateClientFromRep(ClientRepresentation rep, ClientModel client, KeycloakSession session) throws ModelDuplicateException {
-        if (TRUE.equals(rep.isServiceAccountsEnabled()) && !client.isServiceAccountsEnabled()) {
-            new ClientManager(new RealmManager(session)).enableServiceAccount(client);
+        if (TRUE.equals(rep.isServiceAccountsEnabled())) {
+            UserModel serviceAccount = this.session.users().getServiceAccount(client);
+
+            if (serviceAccount == null) {
+                new ClientManager(new RealmManager(session)).enableServiceAccount(client);
+            }
+        }
+
+        if (!rep.getClientId().equals(client.getClientId())) {
+            new ClientManager(new RealmManager(session)).clientIdChanged(client, rep.getClientId());
         }
 
         RepresentationToModel.updateClient(rep, client);
 
-        if (Profile.isPreviewEnabled()) {
+        if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
             if (TRUE.equals(rep.getAuthorizationServicesEnabled())) {
                 authorization().enable();
             } else {
@@ -186,7 +195,7 @@ public class ClientResource {
 
         ClientRepresentation representation = ModelToRepresentation.toRepresentation(client);
 
-        if (Profile.isPreviewEnabled()) {
+        if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
             representation.setAuthorizationServicesEnabled(authorization().isEnabled());
         }
 
@@ -573,7 +582,7 @@ public class ClientResource {
 
     @Path("/authz")
     public AuthorizationService authorization() {
-        ProfileHelper.requirePreview();
+        ProfileHelper.requireFeature(Profile.Feature.AUTHORIZATION);
 
         AuthorizationService resource = new AuthorizationService(this.session, this.client, this.auth);
 

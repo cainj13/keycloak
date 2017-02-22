@@ -27,7 +27,7 @@ import org.keycloak.representations.idm.EventRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.AssertEvents;
-import org.keycloak.testsuite.TestRealmKeycloakTest;
+import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.AppPage.RequestType;
 import org.keycloak.testsuite.pages.ErrorPage;
@@ -58,7 +58,7 @@ import static org.junit.Assert.assertTrue;
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
-public class ResetPasswordTest extends TestRealmKeycloakTest {
+public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
 
     static int lifespan = 0;
 
@@ -178,6 +178,11 @@ public class ResetPasswordTest extends TestRealmKeycloakTest {
     }
 
     @Test
+    public void resetPasswordWithSpacesInUsername() throws IOException, MessagingException {
+        resetPassword(" login-test ");
+    }
+
+    @Test
     public void resetPasswordCancelChangeUser() throws IOException, MessagingException {
         loginPage.open();
         loginPage.resetPassword();
@@ -224,7 +229,7 @@ public class ResetPasswordTest extends TestRealmKeycloakTest {
 
         events.expectRequiredAction(EventType.SEND_RESET_PASSWORD)
                 .user(userId)
-                .detail(Details.USERNAME, username)
+                .detail(Details.USERNAME, username.trim())
                 .detail(Details.EMAIL, "login@test.com")
                 .session((String)null)
                 .assertEvent();
@@ -241,11 +246,11 @@ public class ResetPasswordTest extends TestRealmKeycloakTest {
 
         updatePasswordPage.changePassword("resetPassword", "resetPassword");
 
-        String sessionId = events.expectRequiredAction(EventType.UPDATE_PASSWORD).user(userId).detail(Details.USERNAME, username).assertEvent().getSessionId();
+        String sessionId = events.expectRequiredAction(EventType.UPDATE_PASSWORD).user(userId).detail(Details.USERNAME, username.trim()).assertEvent().getSessionId();
 
         assertEquals(RequestType.AUTH_RESPONSE, appPage.getRequestType());
 
-        events.expectLogin().user(userId).detail(Details.USERNAME, username).session(sessionId).assertEvent();
+        events.expectLogin().user(userId).detail(Details.USERNAME, username.trim()).session(sessionId).assertEvent();
 
         oauth.openLogout();
 

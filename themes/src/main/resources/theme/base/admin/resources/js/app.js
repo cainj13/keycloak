@@ -1489,6 +1489,26 @@ module.config([ '$routeProvider', function($routeProvider) {
             },
             controller : 'LDAPUserStorageCtrl'
         })
+        .when('/create/user-storage/:realm/providers/kerberos', {
+            templateUrl : resourceUrl + '/partials/user-storage-kerberos.html',
+            resolve : {
+                realm : function(RealmLoader) {
+                    return RealmLoader();
+                },
+                instance : function() {
+                    return {
+
+                    };
+                },
+                providerId : function($route) {
+                    return "kerberos";
+                },
+                serverInfo : function(ServerInfoLoader) {
+                    return ServerInfoLoader();
+                }
+            },
+            controller : 'GenericUserStorageCtrl'
+        })
         .when('/create/user-storage/:realm/providers/:provider', {
             templateUrl : resourceUrl + '/partials/user-storage-generic.html',
             resolve : {
@@ -1526,6 +1546,24 @@ module.config([ '$routeProvider', function($routeProvider) {
                 }
             },
             controller : 'LDAPUserStorageCtrl'
+        })
+        .when('/realms/:realm/user-storage/providers/kerberos/:componentId', {
+            templateUrl : resourceUrl + '/partials/user-storage-kerberos.html',
+            resolve : {
+                realm : function(RealmLoader) {
+                    return RealmLoader();
+                },
+                instance : function(ComponentLoader) {
+                    return ComponentLoader();
+                },
+                providerId : function($route) {
+                    return "kerberos";
+                },
+                serverInfo : function(ServerInfoLoader) {
+                    return ServerInfoLoader();
+                }
+            },
+            controller : 'GenericUserStorageCtrl'
         })
         .when('/realms/:realm/user-storage/providers/:provider/:componentId', {
             templateUrl : resourceUrl + '/partials/user-storage-generic.html',
@@ -1611,150 +1649,6 @@ module.config([ '$routeProvider', function($routeProvider) {
             },
             controller : 'UserFederationCtrl'
         })
-        .when('/realms/:realm/user-federation/providers/ldap/:instance', {
-            templateUrl : resourceUrl + '/partials/federated-ldap.html',
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                instance : function(UserFederationInstanceLoader) {
-                    return UserFederationInstanceLoader();
-                }
-            },
-            controller : 'LDAPCtrl'
-        })
-        .when('/create/user-federation/:realm/providers/ldap', {
-            templateUrl : resourceUrl + '/partials/federated-ldap.html',
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                instance : function() {
-                    return {};
-                }
-            },
-            controller : 'LDAPCtrl'
-        })
-        .when('/realms/:realm/user-federation/providers/kerberos/:instance', {
-            templateUrl : resourceUrl + '/partials/federated-kerberos.html',
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                instance : function(UserFederationInstanceLoader) {
-                    return UserFederationInstanceLoader();
-                },
-                providerFactory : function() {
-                    return { id: "kerberos" };
-                }
-            },
-            controller : 'GenericUserFederationCtrl'
-        })
-        .when('/create/user-federation/:realm/providers/kerberos', {
-            templateUrl : resourceUrl + '/partials/federated-kerberos.html',
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                instance : function() {
-                    return {};
-                },
-                providerFactory : function() {
-                    return { id: "kerberos" };
-                }
-            },
-            controller : 'GenericUserFederationCtrl'
-        })
-        .when('/create/user-federation/:realm/providers/:provider', {
-            templateUrl : resourceUrl + '/partials/federated-generic.html',
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                instance : function() {
-                    return {
-
-                    };
-                },
-                providerFactory : function(UserFederationFactoryLoader) {
-                    return UserFederationFactoryLoader();
-                }
-            },
-            controller : 'GenericUserFederationCtrl'
-        })
-        .when('/realms/:realm/user-federation/providers/:provider/:instance', {
-            templateUrl : resourceUrl + '/partials/federated-generic.html',
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                instance : function(UserFederationInstanceLoader) {
-                    return UserFederationInstanceLoader();
-                },
-                providerFactory : function(UserFederationFactoryLoader) {
-                    return UserFederationFactoryLoader();
-                }
-            },
-            controller : 'GenericUserFederationCtrl'
-        })
-        .when('/realms/:realm/user-federation/providers/:provider/:instance/mappers', {
-            templateUrl : function(params){ return resourceUrl + '/partials/federated-mappers.html'; },
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                provider : function(UserFederationInstanceLoader) {
-                    return UserFederationInstanceLoader();
-                },
-                mapperTypes : function(UserFederationMapperTypesLoader) {
-                    return UserFederationMapperTypesLoader();
-                },
-                mappers : function(UserFederationMappersLoader) {
-                    return UserFederationMappersLoader();
-                }
-            },
-            controller : 'UserFederationMapperListCtrl'
-        })
-        .when('/realms/:realm/user-federation/providers/:provider/:instance/mappers/:mapperId', {
-            templateUrl : function(params){ return resourceUrl + '/partials/federated-mapper-detail.html'; },
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                provider : function(UserFederationInstanceLoader) {
-                    return UserFederationInstanceLoader();
-                },
-                mapperTypes : function(UserFederationMapperTypesLoader) {
-                    return UserFederationMapperTypesLoader();
-                },
-                mapper : function(UserFederationMapperLoader) {
-                    return UserFederationMapperLoader();
-                },
-                clients : function(ClientListLoader) {
-                    return ClientListLoader();
-                }
-            },
-            controller : 'UserFederationMapperCtrl'
-        })
-        .when('/create/user-federation-mappers/:realm/:provider/:instance', {
-            templateUrl : function(params){ return resourceUrl + '/partials/federated-mapper-detail.html'; },
-            resolve : {
-                realm : function(RealmLoader) {
-                    return RealmLoader();
-                },
-                provider : function(UserFederationInstanceLoader) {
-                    return UserFederationInstanceLoader();
-                },
-                mapperTypes : function(UserFederationMapperTypesLoader) {
-                    return UserFederationMapperTypesLoader();
-                },
-                clients : function(ClientListLoader) {
-                    return ClientListLoader();
-                }
-            },
-            controller : 'UserFederationMapperCreateCtrl'
-        })
-
         .when('/realms/:realm/defense/headers', {
             templateUrl : resourceUrl + '/partials/defense-headers.html',
             resolve : {
@@ -2574,6 +2468,10 @@ module.controller('RoleSelectorModalCtrl', function($scope, realm, config, confi
 module.controller('ProviderConfigCtrl', function ($modal, $scope, ComponentUtils) {
     $scope.fileNames = {};
 
+    // KEYCLOAK-4463
+    $scope.initEditor = function(editor){
+        editor.$blockScrolling = Infinity; // suppress warning message
+    };
 
     $scope.openRoleSelector = function (configName, config) {
         $modal.open({

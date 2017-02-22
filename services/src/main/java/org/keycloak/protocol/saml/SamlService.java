@@ -36,6 +36,7 @@ import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
+import org.keycloak.keys.RsaKeyMetadata;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionModel;
 import org.keycloak.models.KeyManager;
@@ -248,9 +249,9 @@ public class SamlService extends AuthorizationEndpointBase {
             String bindingType = getBindingType(requestAbstractType);
             if (samlClient.forcePostBinding())
                 bindingType = SamlProtocol.SAML_POST_BINDING;
-            String redirect = null;
+            String redirect;
             URI redirectUri = requestAbstractType.getAssertionConsumerServiceURL();
-            if (redirectUri != null && !"null".equals(redirectUri)) { // "null" is for testing purposes
+            if (redirectUri != null && ! "null".equals(redirectUri.toString())) { // "null" is for testing purposes
                 redirect = RedirectUtils.verifyRedirectUri(uriInfo, redirectUri.toString(), realm, client);
             } else {
                 if (bindingType.equals(SamlProtocol.SAML_POST_BINDING)) {
@@ -279,8 +280,9 @@ public class SamlService extends AuthorizationEndpointBase {
 
             // Handle NameIDPolicy from SP
             NameIDPolicyType nameIdPolicy = requestAbstractType.getNameIDPolicy();
-            if (nameIdPolicy != null && !samlClient.forceNameIDFormat()) {
-                String nameIdFormat = nameIdPolicy.getFormat().toString();
+            final URI nameIdFormatUri = nameIdPolicy == null ? null : nameIdPolicy.getFormat();
+            if (nameIdFormatUri != null && ! samlClient.forceNameIDFormat()) {
+                String nameIdFormat = nameIdFormatUri.toString();
                 // TODO: Handle AllowCreate too, relevant for persistent NameID.
                 if (isSupportedNameIdFormat(nameIdFormat)) {
                     clientSession.setNote(GeneralConstants.NAMEID_FORMAT, nameIdFormat);
@@ -345,7 +347,8 @@ public class SamlService extends AuthorizationEndpointBase {
             AuthenticationManager.AuthResult authResult = authManager.authenticateIdentityCookie(session, realm, false);
             if (authResult != null) {
                 String logoutBinding = getBindingType();
-                if ("true".equals(samlClient.forcePostBinding()))
+                String postBindingUri = SamlProtocol.getLogoutServiceUrl(uriInfo, client, SamlProtocol.SAML_POST_BINDING);
+                if (samlClient.forcePostBinding() && postBindingUri != null && ! postBindingUri.trim().isEmpty())
                     logoutBinding = SamlProtocol.SAML_POST_BINDING;
                 boolean postBinding = Objects.equals(SamlProtocol.SAML_POST_BINDING, logoutBinding);
 
@@ -361,6 +364,7 @@ public class SamlService extends AuthorizationEndpointBase {
                 userSession.setNote(SamlProtocol.SAML_LOGOUT_REQUEST_ID, logoutRequest.getID());
                 userSession.setNote(SamlProtocol.SAML_LOGOUT_BINDING, logoutBinding);
                 userSession.setNote(SamlProtocol.SAML_LOGOUT_ADD_EXTENSIONS_ELEMENT_WITH_KEY_INFO, Boolean.toString((! postBinding) && samlClient.addExtensionsElementWithKeyInfo()));
+                userSession.setNote(SamlProtocol.SAML_SERVER_SIGNATURE_KEYINFO_KEY_NAME_TRANSFORMER, samlClient.getXmlSigKeyInfoKeyNameTransformer().name());
                 userSession.setNote(SamlProtocol.SAML_LOGOUT_CANONICALIZATION, samlClient.getCanonicalizationMethod());
                 userSession.setNote(AuthenticationManager.KEYCLOAK_LOGOUT_PROTOCOL, SamlProtocol.LOGIN_PROTOCOL);
                 // remove client from logout requests
@@ -414,7 +418,7 @@ public class SamlService extends AuthorizationEndpointBase {
             boolean postBinding = SamlProtocol.SAML_POST_BINDING.equals(logoutBinding);
             if (samlClient.requiresRealmSignature()) {
                 SignatureAlgorithm algorithm = samlClient.getSignatureAlgorithm();
-                KeyManager.ActiveKey keys = session.keys().getActiveKey(realm);
+                KeyManager.ActiveRsaKey keys = session.keys().getActiveRsaKey(realm);
                 binding.signatureAlgorithm(algorithm).signWith(keys.getKid(), keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
                 if (! postBinding && samlClient.addExtensionsElementWithKeyInfo()) {    // Only include extension if REDIRECT binding and signing whole SAML protocol message
                     builder.addExtension(new KeycloakKeySamlExtensionGenerator(keys.getKid()));
@@ -565,18 +569,18 @@ public class SamlService extends AuthorizationEndpointBase {
         props.put("idp.sso.HTTP-Redirect", RealmsResource.protocolUrl(uriInfo).build(realm.getName(), SamlProtocol.LOGIN_PROTOCOL).toString());
         props.put("idp.sls.HTTP-POST", RealmsResource.protocolUrl(uriInfo).build(realm.getName(), SamlProtocol.LOGIN_PROTOCOL).toString());
         StringBuilder keysString = new StringBuilder();
-        Set<KeyMetadata> keys = new TreeSet<>((o1, o2) -> o1.getStatus() == o2.getStatus() // Status can be only PASSIVE OR ACTIVE, push PASSIVE to end of list
+        Set<RsaKeyMetadata> keys = new TreeSet<>((o1, o2) -> o1.getStatus() == o2.getStatus() // Status can be only PASSIVE OR ACTIVE, push PASSIVE to end of list
           ? (int) (o2.getProviderPriority() - o1.getProviderPriority())
           : (o1.getStatus() == KeyMetadata.Status.PASSIVE ? 1 : -1));
-        keys.addAll(session.keys().getKeys(realm, false));
-        for (KeyMetadata key : keys) {
+        keys.addAll(session.keys().getRsaKeys(realm, false));
+        for (RsaKeyMetadata key : keys) {
             addKeyInfo(keysString, key, KeyTypes.SIGNING.value());
         }
         props.put("idp.signing.certificates", keysString.toString());
         return StringPropertyReplacer.replaceProperties(template, props);
     }
 
-    private static void addKeyInfo(StringBuilder target, KeyMetadata key, String purpose) {
+    private static void addKeyInfo(StringBuilder target, RsaKeyMetadata key, String purpose) {
         if (key == null) {
             return;
         }

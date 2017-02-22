@@ -22,20 +22,25 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+
+import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
+import org.keycloak.models.PasswordPolicy;
 import org.keycloak.models.utils.TimeBasedOTP;
+import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.EventRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.services.resources.AccountService;
 import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.testsuite.AssertEvents;
-import org.keycloak.testsuite.TestRealmKeycloakTest;
+import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.drone.Different;
 import org.keycloak.testsuite.pages.AccountApplicationsPage;
+import org.keycloak.testsuite.pages.AccountFederatedIdentityPage;
 import org.keycloak.testsuite.pages.AccountLogPage;
 import org.keycloak.testsuite.pages.AccountPasswordPage;
 import org.keycloak.testsuite.pages.AccountSessionsPage;
@@ -50,6 +55,7 @@ import org.keycloak.testsuite.util.IdentityProviderBuilder;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.RealmBuilder;
 import org.keycloak.testsuite.util.UserBuilder;
+
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 
@@ -64,7 +70,7 @@ import static org.hamcrest.Matchers.*;
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
-public class AccountTest extends TestRealmKeycloakTest {
+public class AccountTest extends AbstractTestRealmKeycloakTest {
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
@@ -89,6 +95,12 @@ public class AccountTest extends TestRealmKeycloakTest {
                                               .providerId("oidc")
                                               .alias("myoidc")
                                               .displayName("MyOIDC")
+                                              .build());
+        testRealm.addIdentityProvider(IdentityProviderBuilder.create()
+                                              .providerId("oidc")
+                                              .alias("myhiddenoidc")
+                                              .displayName("MyHiddenOIDC")
+                                              .hideOnLoginPage()
                                               .build());
 
         RealmBuilder.edit(testRealm)
@@ -133,6 +145,9 @@ public class AccountTest extends TestRealmKeycloakTest {
 
     @Page
     protected AccountApplicationsPage applicationsPage;
+    
+    @Page
+    protected AccountFederatedIdentityPage federatedIdentityPage;
 
     @Page
     protected ErrorPage errorPage;
@@ -363,38 +378,96 @@ public class AccountTest extends TestRealmKeycloakTest {
         events.expectAccount(EventType.UPDATE_PASSWORD).assertEvent();
     }
 
-    @Test
-    public void changePasswordWithPasswordHistoryPolicy() {
-        setPasswordPolicy("passwordHistory(2)");
+     private void assertChangePasswordSucceeds(String currentPassword, String newPassword) {
+        changePasswordPage.changePassword(currentPassword, newPassword, newPassword);
+        Assert.assertEquals("Your password has been updated.", profilePage.getSuccess());
+        events.expectAccount(EventType.UPDATE_PASSWORD).assertEvent();
+    }
+
+     private void assertChangePasswordFails(String currentPassword, String newPassword) {
+        changePasswordPage.changePassword(currentPassword, newPassword, newPassword);
+        Assert.assertThat(profilePage.getError(), containsString("Invalid password: must not be equal to any of last"));
+        events.expectAccount(EventType.UPDATE_PASSWORD_ERROR).error(Errors.PASSWORD_REJECTED).assertEvent();
+    }
+
+   @Test
+    public void changePasswordWithPasswordHistoryPolicyThreePasswords() {
+        setPasswordPolicy(PasswordPolicy.PASSWORD_HISTORY_ID + "(3)");
 
         changePasswordPage.open();
         loginPage.login("test-user@localhost", "password");
         events.expectLogin().client("account").detail(Details.REDIRECT_URI, ACCOUNT_REDIRECT + "?path=password").assertEvent();
 
-        changePasswordPage.changePassword("password", "password", "password");
-        Assert.assertEquals("Invalid password: must not be equal to any of last 2 passwords.", profilePage.getError());
-        events.expectAccount(EventType.UPDATE_PASSWORD_ERROR).error(Errors.PASSWORD_REJECTED).assertEvent();
+        assertChangePasswordFails   ("password",  "password");  // current: password
+        assertChangePasswordSucceeds("password",  "password1"); // current: password
 
-        changePasswordPage.changePassword("password", "password1", "password1");
-        Assert.assertEquals("Your password has been updated.", profilePage.getSuccess());
-        events.expectAccount(EventType.UPDATE_PASSWORD).assertEvent();
+        assertChangePasswordFails   ("password1", "password");  // current: password1, history: password
+        assertChangePasswordFails   ("password1", "password1"); // current: password1, history: password
+        assertChangePasswordSucceeds("password1", "password2"); // current: password1, history: password
 
-        changePasswordPage.changePassword("password1", "password", "password");
-        Assert.assertEquals("Invalid password: must not be equal to any of last 2 passwords.", profilePage.getError());
-        events.expectAccount(EventType.UPDATE_PASSWORD_ERROR).error(Errors.PASSWORD_REJECTED).assertEvent();
+        assertChangePasswordFails   ("password2", "password");  // current: password2, history: password, password1
+        assertChangePasswordFails   ("password2", "password1"); // current: password2, history: password, password1
+        assertChangePasswordFails   ("password2", "password2"); // current: password2, history: password, password1
+        assertChangePasswordSucceeds("password2", "password3"); // current: password2, history: password, password1
 
-        changePasswordPage.changePassword("password1", "password1", "password1");
-        Assert.assertEquals("Invalid password: must not be equal to any of last 2 passwords.", profilePage.getError());
-        events.expectAccount(EventType.UPDATE_PASSWORD_ERROR).error(Errors.PASSWORD_REJECTED).assertEvent();
+        assertChangePasswordSucceeds("password3", "password");  // current: password3, history: password1, password2
+    }
 
-        changePasswordPage.changePassword("password1", "password2", "password2");
-        Assert.assertEquals("Your password has been updated.", profilePage.getSuccess());
-        events.expectAccount(EventType.UPDATE_PASSWORD).assertEvent();
+    @Test
+    public void changePasswordWithPasswordHistoryPolicyTwoPasswords() {
+        setPasswordPolicy(PasswordPolicy.PASSWORD_HISTORY_ID + "(2)");
+
+        changePasswordPage.open();
+        loginPage.login("test-user@localhost", "password");
+        events.expectLogin().client("account").detail(Details.REDIRECT_URI, ACCOUNT_REDIRECT + "?path=password").assertEvent();
+
+        assertChangePasswordFails   ("password",  "password");  // current: password
+        assertChangePasswordSucceeds("password",  "password1"); // current: password
+
+        assertChangePasswordFails   ("password1", "password");  // current: password1, history: password
+        assertChangePasswordFails   ("password1", "password1"); // current: password1, history: password
+        assertChangePasswordSucceeds("password1", "password2"); // current: password1, history: password
+
+        assertChangePasswordFails   ("password2", "password1"); // current: password2, history: password1
+        assertChangePasswordFails   ("password2", "password2"); // current: password2, history: password1
+        assertChangePasswordSucceeds("password2", "password");  // current: password2, history: password1
+    }
+
+    @Test
+    public void changePasswordWithPasswordHistoryPolicyOnePwds() {
+        // One password means only the active password is checked
+        setPasswordPolicy(PasswordPolicy.PASSWORD_HISTORY_ID + "(1)");
+
+        changePasswordPage.open();
+        loginPage.login("test-user@localhost", "password");
+        events.expectLogin().client("account").detail(Details.REDIRECT_URI, ACCOUNT_REDIRECT + "?path=password").assertEvent();
+
+        assertChangePasswordFails   ("password",  "password");  // current: password
+        assertChangePasswordSucceeds("password",  "password1"); // current: password
+
+        assertChangePasswordFails   ("password1", "password1"); // current: password1
+        assertChangePasswordSucceeds("password1", "password");  // current: password1
+    }
+
+    @Test
+    public void changePasswordWithPasswordHistoryPolicyZeroPwdsInHistory() {
+        setPasswordPolicy(PasswordPolicy.PASSWORD_HISTORY_ID + "(0)");
+
+        changePasswordPage.open();
+        loginPage.login("test-user@localhost", "password");
+        events.expectLogin().client("account").detail(Details.REDIRECT_URI, ACCOUNT_REDIRECT + "?path=password").assertEvent();
+
+        assertChangePasswordFails   ("password",  "password");  // current: password
+        assertChangePasswordSucceeds("password",  "password1"); // current: password
+
+        assertChangePasswordFails   ("password1", "password1"); // current: password1
+        assertChangePasswordSucceeds("password1", "password");  // current: password1
     }
 
     @Test
     public void changeProfile() throws Exception {
         setEditUsernameAllowed(false);
+        setRegistrationEmailAsUsername(false);
 
         profilePage.open();
         loginPage.login("test-user@localhost", "password");
@@ -463,9 +536,34 @@ public class AccountTest extends TestRealmKeycloakTest {
         setEditUsernameAllowed(true);
     }
 
+    @Test
+    public void changeProfileEmailAsUsernameEnabled() throws Exception {
+        setRegistrationEmailAsUsername(true);
+
+        profilePage.open();
+        loginPage.login("test-user@localhost", "password");
+        Assert.assertFalse(driver.findElements(By.id("username")).size() > 0);
+
+        // Revert
+        setRegistrationEmailAsUsername(false);
+
+    }
+
     private void setEditUsernameAllowed(boolean allowed) {
         RealmRepresentation testRealm = testRealm().toRepresentation();
         testRealm.setEditUsernameAllowed(allowed);
+        testRealm().update(testRealm);
+    }
+
+    private void setRegistrationEmailAsUsername(boolean allowed) {
+        RealmRepresentation testRealm = testRealm().toRepresentation();
+        testRealm.setRegistrationEmailAsUsername(allowed);
+        testRealm().update(testRealm);
+    }
+
+    private void setDuplicateEmailsAllowed(boolean allowed) {
+        RealmRepresentation testRealm = testRealm().toRepresentation();
+        testRealm.setDuplicateEmailsAllowed(allowed);
         testRealm().update(testRealm);
     }
 
@@ -579,7 +677,7 @@ public class AccountTest extends TestRealmKeycloakTest {
 
     // KEYCLOAK-1534
     @Test
-    public void changeEmailToExisting() {
+    public void changeEmailToExistingForbidden() {
         profilePage.open();
         loginPage.login("test-user@localhost", "password");
 
@@ -612,6 +710,24 @@ public class AccountTest extends TestRealmKeycloakTest {
         // Change email and other things to original values
         profilePage.updateProfile("Tom", "Brady", "test-user@localhost");
         events.expectAccount(EventType.UPDATE_PROFILE).assertEvent();
+    }
+ 
+    @Test
+    public void changeEmailToExistingAllowed() {
+        setDuplicateEmailsAllowed(true); 
+        
+        profilePage.open();
+        loginPage.login("test-user@localhost", "password");
+
+        events.expectLogin().client("account").detail(Details.REDIRECT_URI, ACCOUNT_REDIRECT).assertEvent();
+
+        Assert.assertEquals("test-user@localhost", profilePage.getUsername());
+        Assert.assertEquals("test-user@localhost", profilePage.getEmail());
+
+        // Change to the email, which some other user has
+        profilePage.updateProfile("New first", "New last", "test-user-no-access@localhost");
+
+        Assert.assertEquals("Your account has been updated.", profilePage.getSuccess());
     }
 
     @Test
@@ -758,7 +874,7 @@ public class AccountTest extends TestRealmKeycloakTest {
         Assert.assertTrue(applicationsPage.isCurrent());
 
         Map<String, AccountApplicationsPage.AppEntry> apps = applicationsPage.getApplications();
-        Assert.assertThat(apps.keySet(), containsInAnyOrder("Account", "test-app", "test-app-scope", "third-party", "test-app-authz"));
+        Assert.assertThat(apps.keySet(), containsInAnyOrder("Account", "test-app", "test-app-scope", "third-party", "test-app-authz", "My Named Test App", "Test App Named - ${client_account}"));
 
         AccountApplicationsPage.AppEntry accountEntry = apps.get("Account");
         Assert.assertEquals(2, accountEntry.getRolesAvailable().size());
@@ -812,7 +928,13 @@ public class AccountTest extends TestRealmKeycloakTest {
         Assert.assertEquals("GitHub", loginPage.findSocialButton("github").getText());
         Assert.assertEquals("mysaml", loginPage.findSocialButton("mysaml").getText());
         Assert.assertEquals("MyOIDC", loginPage.findSocialButton("myoidc").getText());
-
+    }
+    
+    @Test
+    public void testIdentityProviderHiddenOnLoginPageIsVisbleInAccount(){
+        federatedIdentityPage.open();
+        loginPage.login("test-user@localhost", "password");
+        Assert.assertNotNull(federatedIdentityPage.findAddProviderButton("myhiddenoidc"));
     }
 
     @Test
@@ -826,6 +948,55 @@ public class AccountTest extends TestRealmKeycloakTest {
 
         driver.navigate().to(profilePage.getPath() + "?referrer=test-invalid&referrer_uri=http://localhost:8180/auth/realms/master/app/auth?test");
         Assert.assertTrue(profilePage.isCurrent());
+
+        events.clear();
+    }
+    
+    @Test
+    public void testReferrerLinkContents() {
+        RealmResource testRealm = testRealm();
+        List<ClientRepresentation> foundClients = testRealm.clients().findByClientId("named-test-app");
+        if (foundClients.isEmpty()) {
+            Assert.fail("Unable to find named-test-app");
+        }
+        ClientRepresentation namedClient = foundClients.get(0);
+        
+        driver.navigate().to(profilePage.getPath() + "?referrer=" + namedClient.getClientId());
+        loginPage.login("test-user@localhost", "password");
+        Assert.assertTrue(profilePage.isCurrent());
+        // When a client has a name provided, the name should be available to the back link
+        Assert.assertEquals("Back to " + namedClient.getName(), profilePage.getBackToApplicationLinkText());
+        Assert.assertEquals(namedClient.getBaseUrl(), profilePage.getBackToApplicationLinkHref());
+
+        foundClients = testRealm.clients().findByClientId("var-named-test-app");
+        if (foundClients.isEmpty()) {
+            Assert.fail("Unable to find var-named-test-app");
+        }
+        namedClient = foundClients.get(0);
+
+        driver.navigate().to(profilePage.getPath() + "?referrer=" + namedClient.getClientId());
+        Assert.assertTrue(profilePage.isCurrent());
+        // When a client has a name provided as a variable, the name should be resolved using a localized bundle and available to the back link
+        Assert.assertEquals("Back to Test App Named - Account", profilePage.getBackToApplicationLinkText());
+        Assert.assertEquals(namedClient.getBaseUrl(), profilePage.getBackToApplicationLinkHref());
+
+
+        foundClients = testRealm.clients().findByClientId("test-app");
+        if (foundClients.isEmpty()) {
+            Assert.fail("Unable to find test-app");
+        }
+        ClientRepresentation namelessClient = foundClients.get(0);
+        
+        driver.navigate().to(profilePage.getPath() + "?referrer=" + namelessClient.getClientId());
+        Assert.assertTrue(profilePage.isCurrent());
+        // When a client has no name provided, the client-id should be available to the back link
+        Assert.assertEquals("Back to " + namelessClient.getClientId(), profilePage.getBackToApplicationLinkText());
+        Assert.assertEquals(namelessClient.getBaseUrl(), profilePage.getBackToApplicationLinkHref());
+
+        driver.navigate().to(profilePage.getPath() + "?referrer=test-invalid");
+        Assert.assertTrue(profilePage.isCurrent());
+        // When a client is invalid, the back link should not exist
+        Assert.assertNull(profilePage.getBackToApplicationLinkText());
 
         events.clear();
     }

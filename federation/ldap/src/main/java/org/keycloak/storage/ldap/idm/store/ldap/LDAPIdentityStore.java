@@ -18,15 +18,18 @@
 package org.keycloak.storage.ldap.idm.store.ldap;
 
 import org.jboss.logging.Logger;
+import org.keycloak.common.util.Base64;
 import org.keycloak.models.LDAPConstants;
 import org.keycloak.models.ModelException;
 import org.keycloak.storage.ldap.LDAPConfig;
 import org.keycloak.storage.ldap.idm.model.LDAPDn;
 import org.keycloak.storage.ldap.idm.model.LDAPObject;
 import org.keycloak.storage.ldap.idm.query.Condition;
+import org.keycloak.storage.ldap.idm.query.EscapeStrategy;
 import org.keycloak.storage.ldap.idm.query.internal.EqualCondition;
 import org.keycloak.storage.ldap.idm.query.internal.LDAPQuery;
 import org.keycloak.storage.ldap.idm.store.IdentityStore;
+import org.keycloak.storage.ldap.mappers.LDAPOperationDecorator;
 
 import javax.naming.AuthenticationException;
 import javax.naming.NamingEnumeration;
@@ -39,6 +42,8 @@ import javax.naming.directory.DirContext;
 import javax.naming.directory.ModificationItem;
 import javax.naming.directory.SearchControls;
 import javax.naming.directory.SearchResult;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -98,6 +103,8 @@ public class LDAPIdentityStore implements IdentityStore {
 
     @Override
     public void update(LDAPObject ldapObject) {
+        checkRename(ldapObject);
+
         BasicAttributes updatedAttributes = extractAttributes(ldapObject, false);
         NamingEnumeration<Attribute> attributes = updatedAttributes.getAll();
 
@@ -106,6 +113,38 @@ public class LDAPIdentityStore implements IdentityStore {
 
         if (logger.isDebugEnabled()) {
             logger.debugf("Type with identifier [%s] and DN [%s] successfully updated to LDAP store.", ldapObject.getUuid(), entryDn);
+        }
+    }
+
+    protected void checkRename(LDAPObject ldapObject) {
+        String rdnAttrName = ldapObject.getRdnAttributeName();
+        if (ldapObject.getReadOnlyAttributeNames().contains(rdnAttrName.toLowerCase())) {
+            return;
+        }
+
+        String rdnAttrVal = ldapObject.getAttributeAsString(rdnAttrName);
+
+        // Could be the case when RDN attribute of the target object is not included in Keycloak mappers
+        if (rdnAttrVal == null) {
+            return;
+        }
+
+        String oldRdnAttrVal = ldapObject.getDn().getFirstRdnAttrValue();
+        if (!oldRdnAttrVal.equals(rdnAttrVal)) {
+            LDAPDn newLdapDn = ldapObject.getDn().getParentDn();
+            newLdapDn.addFirst(rdnAttrName, rdnAttrVal);
+
+            String oldDn = ldapObject.getDn().toString();
+            String newDn = newLdapDn.toString();
+
+            if (logger.isDebugEnabled()) {
+                logger.debugf("Renaming LDAP Object. Old DN: [%s], New DN: [%s]", oldDn, newDn);
+            }
+
+            // In case, that there is conflict (For example already existing "CN=John Anthony"), the different DN is returned
+            newDn = this.operationManager.renameEntry(oldDn, newDn, true);
+
+            ldapObject.setDn(LDAPDn.fromString(newDn));
         }
     }
 
@@ -201,7 +240,7 @@ public class LDAPIdentityStore implements IdentityStore {
     }
 
     @Override
-    public void updatePassword(LDAPObject user, String password) {
+    public void updatePassword(LDAPObject user, String password, LDAPOperationDecorator passwordUpdateDecorator) {
         String userDN = user.getDn().toString();
 
         if (logger.isDebugEnabled()) {
@@ -209,7 +248,7 @@ public class LDAPIdentityStore implements IdentityStore {
         }
 
         if (getConfig().isActiveDirectory()) {
-            updateADPassword(userDN, password);
+            updateADPassword(userDN, password, passwordUpdateDecorator);
         } else {
             ModificationItem[] mods = new ModificationItem[1];
 
@@ -218,7 +257,7 @@ public class LDAPIdentityStore implements IdentityStore {
 
                 mods[0] = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, mod0);
 
-                operationManager.modifyAttribute(userDN, mod0);
+                operationManager.modifyAttributes(userDN, mods, passwordUpdateDecorator);
             } catch (ModelException me) {
                 throw me;
             } catch (Exception e) {
@@ -228,7 +267,7 @@ public class LDAPIdentityStore implements IdentityStore {
     }
 
 
-    private void updateADPassword(String userDN, String password) {
+    private void updateADPassword(String userDN, String password, LDAPOperationDecorator passwordUpdateDecorator) {
         try {
             // Replace the "unicdodePwd" attribute with a new value
             // Password must be both Unicode and a quoted string
@@ -240,7 +279,7 @@ public class LDAPIdentityStore implements IdentityStore {
             List<ModificationItem> modItems = new ArrayList<ModificationItem>();
             modItems.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE, unicodePwd));
 
-            operationManager.modifyAttributes(userDN, modItems.toArray(new ModificationItem[] {}));
+            operationManager.modifyAttributes(userDN, modItems.toArray(new ModificationItem[] {}), passwordUpdateDecorator);
         } catch (ModelException me) {
             throw me;
         } catch (Exception e) {
@@ -322,8 +361,15 @@ public class LDAPIdentityStore implements IdentityStore {
                     Set<String> attrValues = new LinkedHashSet<>();
                     NamingEnumeration<?> enumm = ldapAttribute.getAll();
                     while (enumm.hasMoreElements()) {
-                        String attrVal = enumm.next().toString().trim();
-                        attrValues.add(attrVal);
+                        Object val = enumm.next();
+
+                        if (val instanceof byte[]) { // byte[]
+                            String attrVal = Base64.encodeBytes((byte[]) val);
+                            attrValues.add(attrVal);
+                        } else { // String
+                            String attrVal = val.toString().trim();
+                            attrValues.add(attrVal);
+                        }
                     }
 
                     if (ldapAttributeName.equalsIgnoreCase(LDAPConstants.OBJECT_CLASS)) {
@@ -376,7 +422,18 @@ public class LDAPIdentityStore implements IdentityStore {
                     if (val == null || val.toString().trim().length() == 0) {
                         val = LDAPConstants.EMPTY_ATTRIBUTE_VALUE;
                     }
-                    attr.add(val);
+
+                    if (getConfig().getBinaryAttributeNames().contains(attrName)) {
+                        // Binary attribute
+                        try {
+                            byte[] bytes = Base64.decode(val);
+                            attr.add(bytes);
+                        } catch (IOException ioe) {
+                            logger.warnf("Wasn't able to Base64 decode the attribute value. Ignoring attribute update. LDAP DN: %s, Attribute: %s, Attribute value: %s" + ldapObject.getDn(), attrName, attrValue);
+                        }
+                    } else {
+                        attr.add(val);
+                    }
                 }
 
                 entryAttributes.put(attr);
@@ -408,7 +465,10 @@ public class LDAPIdentityStore implements IdentityStore {
         try {
             // we need this to retrieve the entry's identifier from the ldap server
             String uuidAttrName = getConfig().getUuidLDAPAttributeName();
-            List<SearchResult> search = this.operationManager.search(ldapObject.getDn().toString(), "(" + ldapObject.getDn().getFirstRdn() + ")", Arrays.asList(uuidAttrName), SearchControls.OBJECT_SCOPE);
+
+            String rdn = ldapObject.getDn().getFirstRdn();
+            String filter = "(" + EscapeStrategy.DEFAULT.escape(rdn) + ")";
+            List<SearchResult> search = this.operationManager.search(ldapObject.getDn().toString(), filter, Arrays.asList(uuidAttrName), SearchControls.OBJECT_SCOPE);
             Attribute id = search.get(0).getAttributes().get(getConfig().getUuidLDAPAttributeName());
 
             if (id == null) {

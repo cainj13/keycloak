@@ -19,14 +19,19 @@ package org.keycloak.testsuite;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.http.ssl.SSLContexts;
+import org.h2.util.IOUtils;
 import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.common.util.Time;
+import org.keycloak.testsuite.adapter.AbstractServletsAdapterTest;
 import org.keycloak.testsuite.arquillian.TestContext;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -36,7 +41,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import javax.ws.rs.NotFoundException;
 import org.jboss.arquillian.container.test.api.RunAsClient;
@@ -71,12 +75,12 @@ import org.keycloak.testsuite.auth.page.login.UpdatePassword;
 import org.keycloak.testsuite.client.KeycloakTestingClient;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.TestEventsLogger;
-import org.keycloak.testsuite.util.WaitUtils;
 import org.openqa.selenium.WebDriver;
 
 import static org.keycloak.testsuite.admin.Users.setPasswordFor;
 import static org.keycloak.testsuite.auth.page.AuthRealm.ADMIN;
 import static org.keycloak.testsuite.auth.page.AuthRealm.MASTER;
+import static org.keycloak.testsuite.util.IOUtil.PROJECT_BUILD_DIRECTORY;
 
 /**
  *
@@ -134,8 +138,12 @@ public abstract class AbstractKeycloakTest {
     public void beforeAbstractKeycloakTest() throws Exception {
         SSLContext ssl = null;
         if ("true".equals(System.getProperty("auth.server.ssl.required"))) {
-            ssl = getSSLContextWithTrustore(new File("src/test/resources/keystore/keycloak.truststore"), "secret");
+            File trustore = new File(PROJECT_BUILD_DIRECTORY, "dependency/keystore/keycloak.truststore");
+            ssl = getSSLContextWithTrustore(trustore, "secret");
+
+            System.setProperty("javax.net.ssl.trustStore", trustore.getAbsolutePath());
         }
+
         adminClient = Keycloak.getInstance(AuthServerTestEnricher.getAuthServerContextRoot() + "/auth",
                 MASTER, ADMIN, ADMIN, Constants.ADMIN_CLI_CLIENT_ID, null, ssl);
 
@@ -144,8 +152,6 @@ public abstract class AbstractKeycloakTest {
         adminUser = createAdminUserRepresentation();
 
         setDefaultPageUriParameters();
-
-        driverSettings();
 
         TestEventsLogger.setDriver(driver);
 
@@ -186,12 +192,6 @@ public abstract class AbstractKeycloakTest {
         realmAccountPage.navigateTo(); // Because IE webdriver freezes when loading a JSON page (realm page), we need to use this alternative
         log.info("deleting cookies in '" + realmAccountPage.getAuthRealm() + "' realm");
         driver.manage().deleteAllCookies();
-    }
-
-    protected void driverSettings() {
-        driver.manage().timeouts().implicitlyWait(WaitUtils.IMPLICIT_ELEMENT_WAIT_MILLIS, TimeUnit.MILLISECONDS);
-        driver.manage().timeouts().pageLoadTimeout(WaitUtils.PAGELOAD_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-        driver.manage().window().maximize();
     }
 
     public void setDefaultPageUriParameters() {

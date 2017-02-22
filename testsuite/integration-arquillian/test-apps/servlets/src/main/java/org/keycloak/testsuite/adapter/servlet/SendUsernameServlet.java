@@ -32,6 +32,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -64,7 +65,7 @@ public class SendUsernameServlet {
             return Response.status(Response.Status.FORBIDDEN).entity("Forbidden").build();
         }
 
-        return Response.ok(getOutput(), MediaType.TEXT_PLAIN).build();
+        return Response.ok(getOutput()).header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_TYPE + ";charset=UTF-8").build();
     }
 
     @POST
@@ -76,15 +77,18 @@ public class SendUsernameServlet {
             throw new RuntimeException("User: " + httpServletRequest.getUserPrincipal() + " do not have required role");
         }
 
-        return Response.ok(getOutput(), MediaType.TEXT_HTML_TYPE).build();
+        return Response.ok(getOutput()).header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_HTML_TYPE + ";charset=UTF-8").build();
+
     }
 
     @GET
     @Path("getAttributes")
     public Response getSentPrincipal() throws IOException {
         System.out.println("In SendUsername Servlet getSentPrincipal()");
+        sentPrincipal = httpServletRequest.getUserPrincipal();
 
-        return Response.ok(getAttributes(), MediaType.TEXT_HTML_TYPE).build();
+        return Response.ok(getAttributes()).header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_HTML_TYPE + ";charset=UTF-8").build();
+
     }
 
     @GET
@@ -108,7 +112,8 @@ public class SendUsernameServlet {
         Integer statusCode = (Integer) httpServletRequest.getAttribute("javax.servlet.error.status_code");
         System.out.println("In SendUsername Servlet errorPage() status code: " + statusCode);
 
-        return Response.ok(getErrorOutput(statusCode), MediaType.TEXT_HTML_TYPE).build();
+        return Response.ok(getErrorOutput(statusCode)).header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_HTML_TYPE + ";charset=UTF-8").build();
+
     }
 
     @GET
@@ -186,12 +191,16 @@ public class SendUsernameServlet {
         SamlPrincipal principal = (SamlPrincipal) sentPrincipal;
         String output = "attribute email: " + principal.getAttribute(X500SAMLProfileConstants.EMAIL.get());
         output += "<br /> topAttribute: " + principal.getAttribute("topAttribute");
+        output += "<br /> boolean-attribute: " + principal.getAttribute("boolean-attribute");
         output += "<br /> level2Attribute: " + principal.getAttribute("level2Attribute");
         output += "<br /> group: " + principal.getAttributes("group").toString();
         output += "<br /> friendlyAttribute email: " + principal.getFriendlyAttribute("email");
         output += "<br /> phone: " + principal.getAttribute("phone");
         output += "<br /> friendlyAttribute phone: " + principal.getFriendlyAttribute("phone");
-        output += "<br /> hardcoded-attribute: " + principal.getAttribute("hardcoded-attribute");
+        output += "<br /> hardcoded-attribute: ";
+        for (String attr : principal.getAttributes("hardcoded-attribute")) {
+            output += attr + ",";
+        }
 
         return output;
     }

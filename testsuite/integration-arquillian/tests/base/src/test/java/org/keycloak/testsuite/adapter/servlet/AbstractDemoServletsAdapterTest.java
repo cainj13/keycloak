@@ -23,33 +23,28 @@ import org.jboss.shrinkwrap.api.spec.WebArchive;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
+
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.common.Version;
-import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.common.util.Time;
+import org.keycloak.common.util.UriUtils;
 import org.keycloak.constants.AdapterConstants;
-import org.keycloak.keys.KeyProvider;
-import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
+import org.keycloak.events.Details;
+import org.keycloak.events.EventType;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.VersionRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
-import org.keycloak.representations.idm.ComponentRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.adapter.AbstractServletsAdapterTest;
 import org.keycloak.testsuite.adapter.filter.AdapterActionsFilter;
-import org.keycloak.testsuite.adapter.page.BasicAuth;
-import org.keycloak.testsuite.adapter.page.CustomerDb;
-import org.keycloak.testsuite.adapter.page.CustomerDbErrorPage;
-import org.keycloak.testsuite.adapter.page.CustomerPortal;
-import org.keycloak.testsuite.adapter.page.InputPortal;
-import org.keycloak.testsuite.adapter.page.ProductPortal;
-import org.keycloak.testsuite.adapter.page.SecurePortal;
-import org.keycloak.testsuite.adapter.page.TokenMinTTLPage;
+import org.keycloak.testsuite.adapter.page.*;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.auth.page.account.Applications;
 import org.keycloak.testsuite.auth.page.login.OAuthGrant;
@@ -57,8 +52,8 @@ import org.keycloak.testsuite.console.page.events.Config;
 import org.keycloak.testsuite.console.page.events.LoginEvents;
 import org.keycloak.testsuite.util.URLUtils;
 import org.keycloak.util.BasicAuthHelper;
+
 import org.openqa.selenium.By;
-import org.openqa.selenium.WebElement;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -67,7 +62,6 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Form;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -78,15 +72,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import org.keycloak.testsuite.adapter.page.CustomerPortalNoConf;
+import static org.junit.Assert.*;
+
+import org.keycloak.testsuite.util.Matchers;
+
+import javax.ws.rs.core.Response.Status;
+
+import static org.hamcrest.Matchers.*;
 import static org.keycloak.testsuite.auth.page.AuthRealm.DEMO;
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlEquals;
-import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlStartsWith;
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlStartsWithLoginUrlOf;
 import static org.keycloak.testsuite.util.WaitUtils.pause;
 import static org.keycloak.testsuite.util.WaitUtils.waitUntilElement;
@@ -103,6 +97,8 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
     private CustomerPortalNoConf customerPortalNoConf;
     @Page
     private SecurePortal securePortal;
+    @Page
+    private SecurePortalWithCustomSessionConfig securePortalWithCustomSessionConfig;
     @Page
     private CustomerDb customerDb;
     @Page
@@ -124,6 +120,9 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
     @Page
     private Config configPage;
 
+    @Rule
+    public AssertEvents assertEvents = new AssertEvents(this);
+
     @Deployment(name = CustomerPortal.DEPLOYMENT_NAME)
     protected static WebArchive customerPortal() {
         return servletDeployment(CustomerPortal.DEPLOYMENT_NAME, CustomerServlet.class, ErrorServlet.class, ServletTestUtils.class);
@@ -139,9 +138,14 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         return servletDeployment(SecurePortal.DEPLOYMENT_NAME, CallAuthenticatedServlet.class);
     }
 
+    @Deployment(name = SecurePortalWithCustomSessionConfig.DEPLOYMENT_NAME)
+    protected static WebArchive securePortalWithCustomSessionConfig() {
+        return servletDeployment(SecurePortalWithCustomSessionConfig.DEPLOYMENT_NAME, CallAuthenticatedServlet.class);
+    }
+
     @Deployment(name = CustomerDb.DEPLOYMENT_NAME)
     protected static WebArchive customerDb() {
-        return servletDeployment(CustomerDb.DEPLOYMENT_NAME, CustomerDatabaseServlet.class);
+        return servletDeployment(CustomerDb.DEPLOYMENT_NAME, AdapterActionsFilter.class, CustomerDatabaseServlet.class);
     }
 
     @Deployment(name = CustomerDbErrorPage.DEPLOYMENT_NAME)
@@ -195,8 +199,7 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
         testRealmLoginPage.form().login("bburke@redhat.com", "password");
         assertCurrentUrlEquals(driver, inputPortal + "/secured/post");
-        String pageSource = driver.getPageSource();
-        assertTrue(pageSource.contains("parameter=hello"));
+        waitUntilElement(By.xpath("//body")).text().contains("parameter=hello");
 
         String logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder())
                 .queryParam(OAuth2Constants.REDIRECT_URI, customerPortal.toString())
@@ -215,97 +218,6 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         String text = client.target(inputPortal + "/unsecured").request().post(Entity.form(form), String.class);
         assertTrue(text.contains("parameter=hello"));
         client.close();
-    }
-
-    @Test
-    public void testRealmKeyRotationWithNewKeyDownload() throws Exception {
-        // Login success first
-        tokenMinTTLPage.navigateTo();
-        testRealmLoginPage.form().waitForUsernameInputPresent();
-        assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
-        testRealmLoginPage.form().login("bburke@redhat.com", "password");
-        assertCurrentUrlEquals(tokenMinTTLPage);
-
-        AccessToken token = tokenMinTTLPage.getAccessToken();
-        Assert.assertEquals("bburke@redhat.com", token.getPreferredUsername());
-
-        // Logout
-        String logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder())
-                .queryParam(OAuth2Constants.REDIRECT_URI, tokenMinTTLPage.toString())
-                .build("demo").toString();
-        driver.navigate().to(logoutUri);
-
-        // Generate new realm key
-        String realmId = adminClient.realm(DEMO).toRepresentation().getId();
-        ComponentRepresentation keys = new ComponentRepresentation();
-        keys.setName("generated");
-        keys.setProviderType(KeyProvider.class.getName());
-        keys.setProviderId("rsa-generated");
-        keys.setParentId(realmId);
-        keys.setConfig(new MultivaluedHashMap<>());
-        keys.getConfig().putSingle("priority", "100");
-        Response response = adminClient.realm(DEMO).components().add(keys);
-        assertEquals(201, response.getStatus());
-        response.close();
-
-        String adapterActionsUrl = tokenMinTTLPage.toString() + "/unsecured/foo";
-        setAdapterAndServerTimeOffset(300, adapterActionsUrl);
-
-        // Try to login. Should work now due to realm key change
-        tokenMinTTLPage.navigateTo();
-        testRealmLoginPage.form().waitForUsernameInputPresent();
-        assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
-        testRealmLoginPage.form().login("bburke@redhat.com", "password");
-        assertCurrentUrlEquals(tokenMinTTLPage);
-        token = tokenMinTTLPage.getAccessToken();
-        Assert.assertEquals("bburke@redhat.com", token.getPreferredUsername());
-        driver.navigate().to(logoutUri);
-
-        // Revert public keys change
-        String timeOffsetUri = UriBuilder.fromUri(adapterActionsUrl)
-                .queryParam(AdapterActionsFilter.RESET_PUBLIC_KEY_PARAM, "true")
-                .build().toString();
-        driver.navigate().to(timeOffsetUri);
-        waitUntilElement(By.tagName("body")).is().visible();
-
-        setAdapterAndServerTimeOffset(0, adapterActionsUrl);
-    }
-
-    @Test
-    public void testClientWithJwksUri() throws Exception {
-        // Set client to bad JWKS URI
-        ClientResource clientResource = ApiUtil.findClientResourceByClientId(testRealmResource(), "secure-portal");
-        ClientRepresentation client = clientResource.toRepresentation();
-        OIDCAdvancedConfigWrapper wrapper = OIDCAdvancedConfigWrapper.fromClientRepresentation(client);
-        wrapper.setUseJwksUrl(true);
-        wrapper.setJwksUrl(securePortal + "/bad-jwks-url");
-        clientResource.update(client);
-
-        // Login should fail at the code-to-token
-        securePortal.navigateTo();
-        assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
-        testRealmLoginPage.form().login("bburke@redhat.com", "password");
-        String pageSource = driver.getPageSource();
-        assertCurrentUrlStartsWith(securePortal);
-        assertFalse(pageSource.contains("Bill Burke") && pageSource.contains("Stian Thorgersen"));
-
-        // Set client to correct JWKS URI
-        client = clientResource.toRepresentation();
-        wrapper = OIDCAdvancedConfigWrapper.fromClientRepresentation(client);
-        wrapper.setUseJwksUrl(true);
-        wrapper.setJwksUrl(securePortal + "/" + AdapterConstants.K_JWKS);
-        clientResource.update(client);
-
-        // Login to secure-portal should be fine now. Client keys downloaded from JWKS URI
-        securePortal.navigateTo();
-        assertCurrentUrlEquals(securePortal);
-        pageSource = driver.getPageSource();
-        assertTrue(pageSource.contains("Bill Burke") && pageSource.contains("Stian Thorgersen"));
-
-        // Logout
-        String logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder())
-                .queryParam(OAuth2Constants.REDIRECT_URI, securePortal.toString()).build("demo").toString();
-        driver.navigate().to(logoutUri);
     }
 
     @Test
@@ -447,6 +359,10 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
 
     @Test
     public void testLoginSSOMax() throws InterruptedException {
+        // Delete cookies
+        driver.navigate().to(customerPortal + "/error.html");
+        driver.manage().deleteAllCookies();
+
         // test login to customer-portal which does a bearer request to customer-db
         customerPortal.navigateTo();
         testRealmLoginPage.form().waitForUsernameInputPresent();
@@ -576,6 +492,27 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
     }
 
+    @Test
+    public void testAuthenticatedWithCustomSessionConfig() {
+        // test login to customer-portal which does a bearer request to customer-db
+        securePortalWithCustomSessionConfig.navigateTo();
+        assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
+        testRealmLoginPage.form().login("bburke@redhat.com", "password");
+        assertCurrentUrlEquals(securePortalWithCustomSessionConfig);
+
+        assertThat("Cookie CUSTOM_JSESSION_ID_NAME should exist", driver.manage().getCookieNamed("CUSTOM_JSESSION_ID_NAME"), notNullValue());
+
+        String pageSource = driver.getPageSource();
+        assertTrue(pageSource.contains("Bill Burke") && pageSource.contains("Stian Thorgersen"));
+        // test logout
+        String logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder())
+                .queryParam(OAuth2Constants.REDIRECT_URI, securePortalWithCustomSessionConfig.toString()).build("demo").toString();
+        driver.navigate().to(logoutUri);
+        assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
+        securePortalWithCustomSessionConfig.navigateTo();
+        assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
+    }
+
     // Tests "token-minimum-time-to-live" adapter configuration option
     @Test
     public void testTokenMinTTL() {
@@ -646,23 +583,19 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         Response response = client.target(basicAuthPage
                 .setTemplateValues("mposolda", "password", value).buildUri()).request().get();
 
-        assertEquals(200, response.getStatus());
+        assertThat(response, Matchers.statusCodeIs(Status.OK));
         assertEquals(value, response.readEntity(String.class));
         response.close();
 
         response = client.target(basicAuthPage
                 .setTemplateValues("invalid-user", "password", value).buildUri()).request().get();
-        assertEquals(401, response.getStatus());
-        String readResponse = response.readEntity(String.class);
-        assertTrue(readResponse.contains("Unauthorized") || readResponse.contains("Status 401"));
-        response.close();
+        assertThat(response, Matchers.statusCodeIs(Status.UNAUTHORIZED));
+        assertThat(response, Matchers.body(anyOf(containsString("Unauthorized"), containsString("Status 401"))));
 
         response = client.target(basicAuthPage
                 .setTemplateValues("admin", "invalid-password", value).buildUri()).request().get();
-        assertEquals(401, response.getStatus());
-        readResponse = response.readEntity(String.class);
-        assertTrue(readResponse.contains("Unauthorized") || readResponse.contains("Status 401"));
-        response.close();
+        assertThat(response, Matchers.statusCodeIs(Status.UNAUTHORIZED));
+        assertThat(response, Matchers.body(anyOf(containsString("Unauthorized"), containsString("Status 401"))));
 
         client.close();
     }
@@ -677,6 +610,7 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         RealmRepresentation realm = testRealmResource().toRepresentation();
         realm.setEventsEnabled(true);
         realm.setEnabledEventTypes(Arrays.asList("REVOKE_GRANT", "LOGIN"));
+        realm.setEventsListeners(Arrays.asList("jboss-logging", "event-queue"));
         testRealmResource().update(realm);
 
         customerPortal.navigateTo();
@@ -690,6 +624,26 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         waitUntilElement(By.xpath("//body")).text().contains("Bill Burke");
         waitUntilElement(By.xpath("//body")).text().contains("Stian Thorgersen");
 
+        String userId = ApiUtil.findUserByUsername(testRealmResource(), "bburke@redhat.com").getId();
+
+        assertEvents.expectLogin()
+                .realm(realm.getId())
+                .client("customer-portal")
+                .user(userId)
+                .detail(Details.USERNAME, "bburke@redhat.com")
+                .detail(Details.CONSENT, Details.CONSENT_VALUE_CONSENT_GRANTED)
+                .detail(Details.REDIRECT_URI, customerPortal.getInjectedUrl().toString())
+                .removeDetail(Details.CODE_ID)
+                .assertEvent();
+
+        assertEvents.expectCodeToToken(null, null)
+                .realm(realm.getId())
+                .client("customer-portal")
+                .user(userId)
+                .session(AssertEvents.isUUID())
+                .removeDetail(Details.CODE_ID)
+                .assertEvent();
+
         applicationsPage.navigateTo();
         applicationsPage.revokeGrantForApplication("customer-portal");
 
@@ -697,42 +651,14 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
 
         assertTrue(oAuthGrantPage.isCurrent());
 
-        loginEventsPage.navigateTo();
+        assertEvents.expect(EventType.REVOKE_GRANT)
+                .realm(realm.getId())
+                .client("account")
+                .user(userId)
+                .detail(Details.REVOKED_CLIENT, "customer-portal")
+                .assertEvent();
 
-        if (!testContext.isAdminLoggedIn()) {
-            loginPage.form().login(adminUser);
-            testContext.setAdminLoggedIn(true);
-        }
-
-        loginEventsPage.table().filter();
-        loginEventsPage.table().filterForm().addEventType("REVOKE_GRANT");
-        loginEventsPage.table().update();
-
-        List<WebElement> resultList = loginEventsPage.table().rows();
-
-        assertEquals(1, resultList.size());
-
-        resultList.get(0).findElement(By.xpath(".//td[text()='REVOKE_GRANT']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='Client']/../td[text()='account']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='IP Address']/../td[text()='127.0.0.1' or text()='0:0:0:0:0:0:0:1']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='revoked_client']/../td[text()='customer-portal']"));
-
-        loginEventsPage.table().reset();
-        loginEventsPage.table().filterForm().addEventType("LOGIN");
-        loginEventsPage.table().update();
-        resultList = loginEventsPage.table().rows();
-
-        assertEquals(1, resultList.size());
-
-        resultList.get(0).findElement(By.xpath(".//td[text()='LOGIN']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='Client']/../td[text()='customer-portal']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='IP Address']/../td[text()='127.0.0.1' or text()='0:0:0:0:0:0:0:1']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='username']/../td[text()='bburke@redhat.com']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='consent']/../td[text()='consent_granted']"));
-
-        configPage.navigateTo();
-        configPage.form().clearLoginEvents();
-        driver.findElement(By.xpath("//div[@class='modal-dialog']//button[text()='Delete']")).click();
+        assertEvents.assertEmpty();
     }
 
     @Test
@@ -740,6 +666,7 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         RealmRepresentation realm = testRealmResource().toRepresentation();
         realm.setEventsEnabled(true);
         realm.setEnabledEventTypes(Arrays.asList("LOGIN", "LOGIN_ERROR", "LOGOUT", "CODE_TO_TOKEN"));
+        realm.setEventsListeners(Arrays.asList("jboss-logging", "event-queue"));
         testRealmResource().update(realm);
 
         customerPortal.navigateTo();
@@ -749,53 +676,37 @@ public abstract class AbstractDemoServletsAdapterTest extends AbstractServletsAd
         waitUntilElement(By.xpath("//body")).text().contains("Bill Burke");
         waitUntilElement(By.xpath("//body")).text().contains("Stian Thorgersen");
 
+        String userId = ApiUtil.findUserByUsername(testRealmResource(), "bburke@redhat.com").getId();
+
+        assertEvents.expectLogin()
+                .realm(realm.getId())
+                .client("customer-portal")
+                .user(userId)
+                .detail(Details.USERNAME, "bburke@redhat.com")
+                .detail(Details.CONSENT, Details.CONSENT_VALUE_NO_CONSENT_REQUIRED)
+                .detail(Details.REDIRECT_URI, customerPortal.getInjectedUrl().toString())
+                .removeDetail(Details.CODE_ID)
+                .assertEvent();
+
+        assertEvents.expectCodeToToken(null, null)
+                .realm(realm.getId())
+                .client("customer-portal")
+                .user(userId)
+                .session(AssertEvents.isUUID())
+                .removeDetail(Details.CODE_ID)
+                .assertEvent();
+
+
         driver.navigate().to(testRealmPage.getOIDCLogoutUrl() + "?redirect_uri=" + customerPortal);
 
-        loginEventsPage.navigateTo();
+        assertEvents.expectLogout(null)
+                .realm(realm.getId())
+                .user(userId)
+                .session(AssertEvents.isUUID())
+                .detail(Details.REDIRECT_URI, customerPortal.getInjectedUrl().toString())
+                .assertEvent();
 
-        if (!testContext.isAdminLoggedIn()) {
-            loginPage.form().login(adminUser);
-            testContext.setAdminLoggedIn(true);
-        }
-
-        loginEventsPage.table().filter();
-        loginEventsPage.table().filterForm().addEventType("LOGOUT");
-        loginEventsPage.table().update();
-
-        List<WebElement> resultList = loginEventsPage.table().rows();
-
-        assertEquals(1, resultList.size());
-
-        resultList.get(0).findElement(By.xpath(".//td[text()='LOGOUT']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='Client']/../td[text()='']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='IP Address']/../td[text()='127.0.0.1' or text()='0:0:0:0:0:0:0:1']"));
-
-        loginEventsPage.table().reset();
-        loginEventsPage.table().filterForm().addEventType("LOGIN");
-        loginEventsPage.table().update();
-        resultList = loginEventsPage.table().rows();
-
-        assertEquals(1, resultList.size());
-
-        resultList.get(0).findElement(By.xpath(".//td[text()='LOGIN']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='Client']/../td[text()='customer-portal']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='IP Address']/../td[text()='127.0.0.1' or text()='0:0:0:0:0:0:0:1']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='username']/../td[text()='bburke@redhat.com']"));
-
-        loginEventsPage.table().reset();
-        loginEventsPage.table().filterForm().addEventType("CODE_TO_TOKEN");
-        loginEventsPage.table().update();
-        resultList = loginEventsPage.table().rows();
-
-        assertEquals(1, resultList.size());
-        resultList.get(0).findElement(By.xpath(".//td[text()='CODE_TO_TOKEN']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='Client']/../td[text()='customer-portal']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='IP Address']/../td[text()='127.0.0.1' or text()='0:0:0:0:0:0:0:1']"));
-        resultList.get(0).findElement(By.xpath(".//td[text()='refresh_token_type']/../td[text()='Refresh']"));
-
-        configPage.navigateTo();
-        configPage.form().clearLoginEvents();
-        driver.findElement(By.xpath("//div[@class='modal-dialog']//button[text()='Delete']")).click();
+        assertEvents.assertEmpty();
 
         String serverLogPath = null;
 

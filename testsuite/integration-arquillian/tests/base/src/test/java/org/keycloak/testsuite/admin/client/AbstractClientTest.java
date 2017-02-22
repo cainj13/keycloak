@@ -36,6 +36,7 @@ import org.keycloak.testsuite.util.RealmBuilder;
 
 import javax.ws.rs.core.Response;
 import java.util.List;
+import static org.keycloak.testsuite.auth.page.AuthRealm.MASTER;
 
 /**
  *
@@ -46,6 +47,14 @@ public abstract class AbstractClientTest extends AbstractAuthTest {
     @Rule
     public AssertAdminEvents assertAdminEvents = new AssertAdminEvents(this);
 
+    @Override
+    public void setDefaultPageUriParameters() {
+        super.setDefaultPageUriParameters();
+        testRealmPage.setAuthRealm(MASTER);
+        testRealmLoginPage.setAuthRealm(testRealmPage);
+        testRealmAccountPage.setAuthRealm(testRealmPage);
+    }    
+    
     @Before
     public void setupAdminEvents() {
         RealmRepresentation realm = testRealmResource().toRepresentation();
@@ -66,7 +75,7 @@ public abstract class AbstractClientTest extends AbstractAuthTest {
     }
 
     protected String getRealmId() {
-        return "master";
+        return MASTER;
     }
 
     // returns UserRepresentation retrieved from server, with all fields, including id
@@ -84,12 +93,32 @@ public abstract class AbstractClientTest extends AbstractAuthTest {
     }
 
     protected String createOidcClient(String name) {
+        return createClient(createOidcClientRep(name));
+    }
+
+    protected String createOidcBearerOnlyClient(String name) {
+        ClientRepresentation clientRep = createOidcClientRep(name);
+        clientRep.setBearerOnly(Boolean.TRUE);
+        clientRep.setPublicClient(Boolean.FALSE);
+        return createClient(clientRep);
+    }
+
+    protected String createOidcBearerOnlyClientWithAuthz(String name) {
+        ClientRepresentation clientRep = createOidcClientRep(name);
+        clientRep.setBearerOnly(Boolean.TRUE);
+        clientRep.setPublicClient(Boolean.FALSE);
+        clientRep.setAuthorizationServicesEnabled(Boolean.TRUE);
+        clientRep.setServiceAccountsEnabled(Boolean.TRUE);
+        return createClient(clientRep);
+    }
+
+    protected ClientRepresentation createOidcClientRep(String name) {
         ClientRepresentation clientRep = new ClientRepresentation();
         clientRep.setClientId(name);
         clientRep.setName(name);
         clientRep.setRootUrl("foo");
-        clientRep.setProtocol("openid-connect");
-        return createClient(clientRep);
+        clientRep.setProtocol("openid-connect"); 
+        return clientRep;
     }
 
     protected String createSamlClient(String name) {

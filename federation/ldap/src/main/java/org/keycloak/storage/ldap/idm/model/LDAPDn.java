@@ -27,7 +27,15 @@ import java.util.LinkedList;
  */
 public class LDAPDn {
 
-    private final Deque<Entry> entries = new LinkedList<>();
+    private final Deque<Entry> entries;
+
+    private LDAPDn() {
+        this.entries = new LinkedList<>();
+    }
+
+    private LDAPDn(Deque<Entry> entries) {
+        this.entries = entries;
+    }
 
     public static LDAPDn fromString(String dnString) {
         LDAPDn dn = new LDAPDn();
@@ -88,7 +96,7 @@ public class LDAPDn {
      */
     public String getFirstRdn() {
         Entry firstEntry = entries.getFirst();
-        return firstEntry.attrName + "=" + firstEntry.attrValue;
+        return firstEntry.attrName + "=" + unescapeValue(firstEntry.attrValue);
     }
 
     /**
@@ -104,17 +112,25 @@ public class LDAPDn {
      */
     public String getFirstRdnAttrValue() {
         Entry firstEntry = entries.getFirst();
-        return firstEntry.attrValue;
+        String dnEscaped = firstEntry.attrValue;
+        return unescapeValue(dnEscaped);
+    }
+
+    private String unescapeValue(String escaped) {
+        // Something needed to handle non-String types?
+        return Rdn.unescapeValue(escaped).toString();
     }
 
     /**
      *
-     * @return string like "dc=something,dc=org" from the DN like "uid=joe,dc=something,dc=org"
+     * @return DN like "dc=something,dc=org" from the DN like "uid=joe,dc=something,dc=org".
+     * Returned DN will be new clone not related to the original DN instance.
+     *
      */
-    public String getParentDn() {
+    public LDAPDn getParentDn() {
         LinkedList<Entry> parentDnEntries = new LinkedList<>(entries);
         parentDnEntries.remove();
-        return toString(parentDnEntries);
+        return new LDAPDn(parentDnEntries);
     }
 
     public boolean isDescendantOf(LDAPDn expectedParentDn) {

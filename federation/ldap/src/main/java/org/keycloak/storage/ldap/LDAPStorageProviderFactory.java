@@ -26,6 +26,7 @@ import org.keycloak.federation.kerberos.CommonKerberosConfig;
 import org.keycloak.federation.kerberos.impl.KerberosServerSubjectAuthenticator;
 import org.keycloak.federation.kerberos.impl.KerberosUsernamePasswordAuthenticator;
 import org.keycloak.federation.kerberos.impl.SPNEGOAuthenticator;
+import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.KeycloakSessionTask;
@@ -33,9 +34,11 @@ import org.keycloak.models.LDAPConstants;
 import org.keycloak.models.ModelException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.cache.UserCache;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
+import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.UserStorageProviderFactory;
 import org.keycloak.storage.UserStorageProviderModel;
@@ -46,15 +49,20 @@ import org.keycloak.storage.ldap.idm.query.internal.LDAPQueryConditionsBuilder;
 import org.keycloak.storage.ldap.idm.store.ldap.LDAPIdentityStore;
 import org.keycloak.storage.ldap.mappers.FullNameLDAPStorageMapper;
 import org.keycloak.storage.ldap.mappers.FullNameLDAPStorageMapperFactory;
+import org.keycloak.storage.ldap.mappers.LDAPConfigDecorator;
 import org.keycloak.storage.ldap.mappers.LDAPStorageMapper;
+import org.keycloak.storage.ldap.mappers.LDAPStorageMapperFactory;
 import org.keycloak.storage.ldap.mappers.UserAttributeLDAPStorageMapper;
 import org.keycloak.storage.ldap.mappers.UserAttributeLDAPStorageMapperFactory;
 import org.keycloak.storage.ldap.mappers.msad.MSADUserAccountControlStorageMapperFactory;
 import org.keycloak.storage.user.ImportSynchronization;
 import org.keycloak.storage.user.SynchronizationResult;
+import org.keycloak.utils.CredentialHelper;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -86,6 +94,10 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
         return ProviderConfigurationBuilder.create()
                 .property().name(LDAPConstants.EDIT_MODE)
                 .type(ProviderConfigProperty.STRING_TYPE)
+                .add()
+                .property().name(UserStorageProviderModel.IMPORT_ENABLED)
+                .type(ProviderConfigProperty.BOOLEAN_TYPE)
+                .defaultValue("true")
                 .add()
                 .property().name(LDAPConstants.SYNC_REGISTRATIONS)
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
@@ -138,6 +150,12 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
                 .defaultValue("true")
                 .add()
+                .property().name(LDAPConstants.CONNECTION_TIMEOUT)
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .add()
+                .property().name(LDAPConstants.READ_TIMEOUT)
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .add()
                 .property().name(LDAPConstants.PAGINATION)
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
                 .defaultValue("true")
@@ -176,15 +194,54 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
 
     @Override
     public LDAPStorageProvider create(KeycloakSession session, ComponentModel model) {
-        LDAPIdentityStore ldapIdentityStore = this.ldapStoreRegistry.getLdapStore(model);
+        Map<ComponentModel, LDAPConfigDecorator> configDecorators = getLDAPConfigDecorators(session, model);
+
+        LDAPIdentityStore ldapIdentityStore = this.ldapStoreRegistry.getLdapStore(session, model, configDecorators);
         return new LDAPStorageProvider(this, session, model, ldapIdentityStore);
     }
+
+
+    // Check if it's some performance overhead to create this map in every request. But probably not...
+    protected Map<ComponentModel, LDAPConfigDecorator> getLDAPConfigDecorators(KeycloakSession session, ComponentModel ldapModel) {
+        RealmModel realm = session.realms().getRealm(ldapModel.getParentId());
+        List<ComponentModel> mapperComponents = realm.getComponents(ldapModel.getId(), LDAPStorageMapper.class.getName());
+
+        Map<ComponentModel, LDAPConfigDecorator> result = new HashMap<>();
+        for (ComponentModel mapperModel : mapperComponents) {
+            LDAPStorageMapperFactory mapperFactory = (LDAPStorageMapperFactory) session.getKeycloakSessionFactory().getProviderFactory(LDAPStorageMapper.class, mapperModel.getProviderId());
+            if (mapperFactory instanceof LDAPConfigDecorator) {
+                result.put(mapperModel, (LDAPConfigDecorator) mapperFactory);
+            }
+        }
+
+        return result;
+    }
+
 
     @Override
     public void validateConfiguration(KeycloakSession session, RealmModel realm, ComponentModel config) throws ComponentValidationException {
         LDAPConfig cfg = new LDAPConfig(config.getConfig());
         String customFilter = cfg.getCustomUserSearchFilter();
         LDAPUtils.validateCustomLdapFilter(customFilter);
+
+        String connectionTimeout = cfg.getConnectionTimeout();
+        if (connectionTimeout != null && !connectionTimeout.isEmpty()) {
+            try {
+                Long.parseLong(connectionTimeout);
+            } catch (NumberFormatException nfe) {
+                throw new ComponentValidationException("ldapErrorConnectionTimeoutNotNumber");
+            }
+        }
+
+        String readTimeout = cfg.getReadTimeout();
+        if (readTimeout != null && !readTimeout.isEmpty()) {
+            try {
+                Long.parseLong(readTimeout);
+            } catch (NumberFormatException nfe) {
+                throw new ComponentValidationException("ldapErrorReadTimeoutNotNumber");
+            }
+        }
+
     }
 
     @Override
@@ -318,7 +375,17 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
             mapperModel = KeycloakModelUtils.createComponentModel("MSAD account controls", model.getId(), MSADUserAccountControlStorageMapperFactory.PROVIDER_ID,LDAPStorageMapper.class.getName());
             realm.addComponentModel(mapperModel);
         }
+        checkKerberosCredential(session, realm, model);
     }
+
+    @Override
+    public void onUpdate(KeycloakSession session, RealmModel realm, ComponentModel oldModel, ComponentModel newModel) {
+        checkKerberosCredential(session, realm, newModel);
+
+    }
+
+
+
 
     @Override
     public SynchronizationResult sync(KeycloakSessionFactory sessionFactory, String realmId, UserStorageProviderModel model) {
@@ -360,12 +427,12 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
 
             @Override
             public void run(KeycloakSession session) {
-                LDAPStorageProvider ldapProvider = (LDAPStorageProvider)session.getProvider(UserStorageProvider.class, model);
                 RealmModel realm = session.realms().getRealm(realmId);
+                session.getProvider(UserStorageProvider.class, model);
                 List<ComponentModel> mappers = realm.getComponents(model.getId(), LDAPStorageMapper.class.getName());
                 for (ComponentModel mapperModel : mappers) {
                     LDAPStorageMapper ldapMapper = session.getProvider(LDAPStorageMapper.class, mapperModel);
-                    SynchronizationResult syncResult = ldapMapper.syncDataFromFederationProviderToKeycloak(mapperModel, ldapProvider, session, realm);
+                    SynchronizationResult syncResult = ldapMapper.syncDataFromFederationProviderToKeycloak(realm);
                     if (syncResult.getAdded() > 0 || syncResult.getUpdated() > 0 || syncResult.getRemoved() > 0 || syncResult.getFailed() > 0) {
                         logger.infof("Sync of federation mapper '%s' finished. Status: %s", mapperModel.getName(), syncResult.toString());
                     }
@@ -458,10 +525,10 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
 
                                 // Update keycloak user
                                 List<ComponentModel> federationMappers = currentRealm.getComponents(fedModel.getId(), LDAPStorageMapper.class.getName());
-                                List<ComponentModel> sortedMappers = ldapFedProvider.sortMappersDesc(federationMappers);
+                                List<ComponentModel> sortedMappers = ldapFedProvider.getMapperManager().sortMappersDesc(federationMappers);
                                 for (ComponentModel mapperModel : sortedMappers) {
-                                    LDAPStorageMapper ldapMapper = ldapFedProvider.getMapper(mapperModel);
-                                    ldapMapper.onImportUserFromLDAP(mapperModel, ldapFedProvider, ldapUser, currentUser, currentRealm, false);
+                                    LDAPStorageMapper ldapMapper = ldapFedProvider.getMapperManager().getMapper(mapperModel);
+                                    ldapMapper.onImportUserFromLDAP(ldapUser, currentUser, currentRealm, false);
                                 }
 
                                 logger.debugf("Updated user from LDAP: %s", currentUser.getUsername());
@@ -495,7 +562,10 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
                             if (username != null) {
                                 UserModel existing = session.userLocalStorage().getUserByUsername(username, currentRealm);
                                 if (existing != null) {
-                                    session.userCache().evict(currentRealm, existing);
+                                    UserCache userCache = session.userCache();
+                                    if (userCache != null) {
+                                        userCache.evict(currentRealm, existing);
+                                    }
                                     session.userLocalStorage().removeUser(currentRealm, existing);
                                 }
                             }
@@ -521,4 +591,15 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
     protected KerberosUsernamePasswordAuthenticator createKerberosUsernamePasswordAuthenticator(CommonKerberosConfig kerberosConfig) {
         return new KerberosUsernamePasswordAuthenticator(kerberosConfig);
     }
-}
+
+    public static boolean checkKerberosCredential(KeycloakSession session, RealmModel realm, ComponentModel model) {
+        String allowKerberosCfg = model.getConfig().getFirst(KerberosConstants.ALLOW_KERBEROS_AUTHENTICATION);
+        if (Boolean.valueOf(allowKerberosCfg)) {
+            CredentialHelper.setOrReplaceAuthenticationRequirement(session, realm, CredentialRepresentation.KERBEROS,
+                    AuthenticationExecutionModel.Requirement.ALTERNATIVE, AuthenticationExecutionModel.Requirement.DISABLED);
+            return true;
+        }
+        return false;
+    }
+
+ }

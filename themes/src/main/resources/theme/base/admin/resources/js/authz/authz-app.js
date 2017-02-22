@@ -175,7 +175,7 @@ module.config(['$routeProvider', function ($routeProvider) {
             }
         },
         controller: 'ResourceServerPolicyCtrl'
-    }).when('/realms/:realm/clients/:client/authz/resource-server/policy/drools/create', {
+    }).when('/realms/:realm/clients/:client/authz/resource-server/policy/rules/create', {
         templateUrl: resourceUrl + '/partials/authz/policy/provider/resource-server-policy-drools-detail.html',
         resolve: {
             realm: function (RealmLoader) {
@@ -186,7 +186,7 @@ module.config(['$routeProvider', function ($routeProvider) {
             }
         },
         controller: 'ResourceServerPolicyDroolsDetailCtrl'
-    }).when('/realms/:realm/clients/:client/authz/resource-server/policy/drools/:id', {
+    }).when('/realms/:realm/clients/:client/authz/resource-server/policy/rules/:id', {
         templateUrl: resourceUrl + '/partials/authz/policy/provider/resource-server-policy-drools-detail.html',
         resolve: {
             realm: function (RealmLoader) {
@@ -263,6 +263,28 @@ module.config(['$routeProvider', function ($routeProvider) {
             }
         },
         controller: 'ResourceServerPolicyUserDetailCtrl'
+    }).when('/realms/:realm/clients/:client/authz/resource-server/policy/client/create', {
+        templateUrl: resourceUrl + '/partials/authz/policy/provider/resource-server-policy-client-detail.html',
+        resolve: {
+            realm: function (RealmLoader) {
+                return RealmLoader();
+            },
+            client : function(ClientLoader) {
+                return ClientLoader();
+            }
+        },
+        controller: 'ResourceServerPolicyClientDetailCtrl'
+    }).when('/realms/:realm/clients/:client/authz/resource-server/policy/client/:id', {
+        templateUrl: resourceUrl + '/partials/authz/policy/provider/resource-server-policy-client-detail.html',
+        resolve: {
+            realm: function (RealmLoader) {
+                return RealmLoader();
+            },
+            client : function(ClientLoader) {
+                return ClientLoader();
+            }
+        },
+        controller: 'ResourceServerPolicyClientDetailCtrl'
     }).when('/realms/:realm/clients/:client/authz/resource-server/policy/role/create', {
         templateUrl: resourceUrl + '/partials/authz/policy/provider/resource-server-policy-role-detail.html',
         resolve: {

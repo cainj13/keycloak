@@ -22,6 +22,7 @@ import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.storage.ldap.LDAPConfig;
 import org.keycloak.storage.ldap.LDAPStorageProvider;
 import org.keycloak.storage.ldap.idm.model.LDAPObject;
 import org.keycloak.storage.ldap.idm.query.internal.LDAPQuery;
@@ -36,57 +37,35 @@ import java.util.List;
  *
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-public abstract class AbstractLDAPStorageMapper {
+public abstract class AbstractLDAPStorageMapper implements LDAPStorageMapper {
 
+    protected final KeycloakSession session;
     protected final ComponentModel mapperModel;
     protected final LDAPStorageProvider ldapProvider;
-    protected final RealmModel realm;
 
-    public AbstractLDAPStorageMapper(ComponentModel mapperModel, LDAPStorageProvider ldapProvider, RealmModel realm) {
+    public AbstractLDAPStorageMapper(ComponentModel mapperModel, LDAPStorageProvider ldapProvider) {
         this.mapperModel = mapperModel;
         this.ldapProvider = ldapProvider;
-        this.realm = realm;
+        this.session = ldapProvider.getSession();
     }
 
-    /**
-     * @see LDAPStorageMapper#syncDataFromFederationProviderToKeycloak(ComponentModel, LDAPStorageProvider, KeycloakSession, RealmModel)
-     */
-    public SynchronizationResult syncDataFromFederationProviderToKeycloak() {
+
+    public SynchronizationResult syncDataFromFederationProviderToKeycloak(RealmModel realm) {
         return new SynchronizationResult();
     }
 
-    /**
-     * @see LDAPStorageMapper#syncDataFromKeycloakToFederationProvider(ComponentModel, LDAPStorageProvider, KeycloakSession, RealmModel)
-     */
-    public SynchronizationResult syncDataFromKeycloakToFederationProvider() {
+
+    public SynchronizationResult syncDataFromKeycloakToFederationProvider(RealmModel realm) {
         return new SynchronizationResult();
     }
 
-    /**
-     * @see LDAPStorageMapper#beforeLDAPQuery(ComponentModel, LDAPQuery)
-     */
-    public abstract void beforeLDAPQuery(LDAPQuery query);
 
-    /**
-     * @see LDAPStorageMapper#proxy(ComponentModel, LDAPStorageProvider, LDAPObject, UserModel, RealmModel)
-     */
-    public abstract UserModel proxy(LDAPObject ldapUser, UserModel delegate);
-
-    /**
-     * @see LDAPStorageMapper#onRegisterUserToLDAP(ComponentModel, LDAPStorageProvider, LDAPObject, UserModel, RealmModel)
-     */
-    public abstract void onRegisterUserToLDAP(LDAPObject ldapUser, UserModel localUser);
-
-    /**
-     * @see LDAPStorageMapper#onImportUserFromLDAP(ComponentModel, LDAPStorageProvider, LDAPObject, UserModel, RealmModel, boolean)
-     */
-    public abstract void onImportUserFromLDAP(LDAPObject ldapUser, UserModel user, boolean isCreate);
-
-    public List<UserModel> getGroupMembers(GroupModel group, int firstResult, int maxResults) {
+    public List<UserModel> getGroupMembers(RealmModel realm, GroupModel group, int firstResult, int maxResults) {
         return Collections.emptyList();
     }
 
-    public boolean onAuthenticationFailure(LDAPObject ldapUser, UserModel user, AuthenticationException ldapException) {
+
+    public boolean onAuthenticationFailure(LDAPObject ldapUser, UserModel user, AuthenticationException ldapException, RealmModel realm) {
         return false;
     }
 
@@ -96,11 +75,15 @@ public abstract class AbstractLDAPStorageMapper {
         return Boolean.parseBoolean(paramm);
     }
 
+
     public LDAPStorageProvider getLdapProvider() {
         return ldapProvider;
     }
 
-    public RealmModel getRealm() {
-        return realm;
+
+    @Override
+    public void close() {
+
     }
+
 }

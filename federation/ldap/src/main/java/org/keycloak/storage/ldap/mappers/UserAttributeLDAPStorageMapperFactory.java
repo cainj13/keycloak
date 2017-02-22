@@ -24,6 +24,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
 import org.keycloak.storage.UserStorageProvider;
+import org.keycloak.storage.UserStorageProviderModel;
 import org.keycloak.storage.ldap.LDAPConfig;
 import org.keycloak.storage.ldap.LDAPStorageProvider;
 
@@ -32,7 +33,7 @@ import java.util.List;
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-public class UserAttributeLDAPStorageMapperFactory extends AbstractLDAPStorageMapperFactory {
+public class UserAttributeLDAPStorageMapperFactory extends AbstractLDAPStorageMapperFactory implements LDAPConfigDecorator {
 
     public static final String PROVIDER_ID = "user-attribute-ldap-mapper";
     protected static final List<ProviderConfigProperty> configProperties;
@@ -42,34 +43,43 @@ public class UserAttributeLDAPStorageMapperFactory extends AbstractLDAPStorageMa
         configProperties = props;
     }
 
-    private static List<ProviderConfigProperty> getConfigProps(ComponentModel parent) {
+    private static List<ProviderConfigProperty> getConfigProps(ComponentModel p) {
         String readOnly = "false";
-        if (parent != null) {
+        UserStorageProviderModel parent = new UserStorageProviderModel();
+        if (p != null) {
+            parent = new UserStorageProviderModel(p);
             LDAPConfig ldapConfig = new LDAPConfig(parent.getConfig());
             readOnly = ldapConfig.getEditMode() == UserStorageProvider.EditMode.WRITABLE ? "false" : "true";
         }
-        return ProviderConfigurationBuilder.create()
-                    .property().name(UserAttributeLDAPStorageMapper.USER_MODEL_ATTRIBUTE)
-                               .label("User Model Attribute")
-                               .helpText("Name of mapped UserModel property or UserModel attribute in Keycloak DB. For example 'firstName', 'lastName, 'email', 'street' etc.")
-                               .type(ProviderConfigProperty.STRING_TYPE)
-                               .add()
-                    .property().name(UserAttributeLDAPStorageMapper.LDAP_ATTRIBUTE).label("LDAP Attribute").helpText("Name of mapped attribute on LDAP object. For example 'cn', 'sn, 'mail', 'street' etc.")
-                               .type(ProviderConfigProperty.STRING_TYPE)
-                               .add()
-                    .property().name(UserAttributeLDAPStorageMapper.READ_ONLY).label("Read Only")
-                               .helpText("Read-only attribute is imported from LDAP to Keycloak DB, but it's not saved back to LDAP when user is updated in Keycloak.")
-                               .type(ProviderConfigProperty.BOOLEAN_TYPE)
-                               .defaultValue(readOnly)
-                               .add()
-                    .property().name(UserAttributeLDAPStorageMapper.ALWAYS_READ_VALUE_FROM_LDAP).label("Always Read Value From LDAP")
-                               .helpText("If on, then during reading of the user will be value of attribute from LDAP always used instead of the value from Keycloak DB")
-                               .type(ProviderConfigProperty.BOOLEAN_TYPE).defaultValue("false").add()
-                    .property().name(UserAttributeLDAPStorageMapper.IS_MANDATORY_IN_LDAP).label("Is Mandatory In LDAP")
-                               .helpText("If true, attribute is mandatory in LDAP. Hence if there is no value in Keycloak DB, the empty value will be set to be propagated to LDAP")
-                               .type(ProviderConfigProperty.BOOLEAN_TYPE)
-                               .defaultValue("false").add()
-                    .build();
+        ProviderConfigurationBuilder config = ProviderConfigurationBuilder.create()
+                .property().name(UserAttributeLDAPStorageMapper.USER_MODEL_ATTRIBUTE)
+                .label("User Model Attribute")
+                .helpText("Name of the UserModel property or attribute you want to map the LDAP attribute into. For example 'firstName', 'lastName, 'email', 'street' etc.")
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .add()
+                .property().name(UserAttributeLDAPStorageMapper.LDAP_ATTRIBUTE).label("LDAP Attribute").helpText("Name of mapped attribute on LDAP object. For example 'cn', 'sn, 'mail', 'street' etc.")
+                .type(ProviderConfigProperty.STRING_TYPE)
+                .add()
+                .property().name(UserAttributeLDAPStorageMapper.READ_ONLY).label("Read Only")
+                .helpText("Read-only attribute is imported from LDAP to UserModel, but it's not saved back to LDAP when user is updated in Keycloak.")
+                .type(ProviderConfigProperty.BOOLEAN_TYPE)
+                .defaultValue(readOnly)
+                .add();
+        if (parent.isImportEnabled()) {
+            config.
+            property().name(UserAttributeLDAPStorageMapper.ALWAYS_READ_VALUE_FROM_LDAP).label("Always Read Value From LDAP")
+                    .helpText("If on, then during reading of the LDAP attribute value will always used instead of the value from Keycloak DB")
+                    .type(ProviderConfigProperty.BOOLEAN_TYPE).defaultValue("false").add();
+        }
+        config.property().name(UserAttributeLDAPStorageMapper.IS_MANDATORY_IN_LDAP).label("Is Mandatory In LDAP")
+                .helpText("If true, attribute is mandatory in LDAP. Hence if there is no value in Keycloak DB, the empty value will be set to be propagated to LDAP")
+                .type(ProviderConfigProperty.BOOLEAN_TYPE)
+                .defaultValue("false").add()
+                .property().name(UserAttributeLDAPStorageMapper.IS_BINARY_ATTRIBUTE).label("Is Binary Attribute")
+                .helpText("Should be true for binary LDAP attributes")
+                .type(ProviderConfigProperty.BOOLEAN_TYPE)
+                .defaultValue("false").add();
+        return config.build();
     }
 
     @Override
@@ -92,15 +102,31 @@ public class UserAttributeLDAPStorageMapperFactory extends AbstractLDAPStorageMa
         checkMandatoryConfigAttribute(UserAttributeLDAPStorageMapper.USER_MODEL_ATTRIBUTE, "User Model Attribute", config);
         checkMandatoryConfigAttribute(UserAttributeLDAPStorageMapper.LDAP_ATTRIBUTE, "LDAP Attribute", config);
 
+        boolean isBinaryAttribute = config.get(UserAttributeLDAPStorageMapper.IS_BINARY_ATTRIBUTE, false);
+        boolean alwaysReadValueFromLDAP = config.get(UserAttributeLDAPStorageMapper.ALWAYS_READ_VALUE_FROM_LDAP, false);
+        if (isBinaryAttribute && !alwaysReadValueFromLDAP) {
+            throw new ComponentValidationException("With Binary attribute enabled, the ''Always read value from LDAP'' must be enabled too");
+        }
+
     }
 
     @Override
-    protected AbstractLDAPStorageMapper createMapper(ComponentModel mapperModel, LDAPStorageProvider federationProvider, RealmModel realm) {
-        return new UserAttributeLDAPStorageMapper(mapperModel, federationProvider, realm);
+    protected AbstractLDAPStorageMapper createMapper(ComponentModel mapperModel, LDAPStorageProvider federationProvider) {
+        return new UserAttributeLDAPStorageMapper(mapperModel, federationProvider);
     }
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties(RealmModel realm, ComponentModel parent) {
         return getConfigProps(parent);
+    }
+
+
+    @Override
+    public void updateLDAPConfig(LDAPConfig ldapConfig, ComponentModel mapperModel) {
+        boolean isBinaryAttribute = mapperModel.get(UserAttributeLDAPStorageMapper.IS_BINARY_ATTRIBUTE, false);
+        if (isBinaryAttribute) {
+            String ldapAttrName = mapperModel.getConfig().getFirst(UserAttributeLDAPStorageMapper.LDAP_ATTRIBUTE);
+            ldapConfig.addBinaryAttribute(ldapAttrName);
+        }
     }
 }

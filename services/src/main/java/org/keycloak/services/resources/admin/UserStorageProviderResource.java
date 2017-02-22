@@ -24,13 +24,11 @@ import org.keycloak.component.ComponentModel;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
-import org.keycloak.provider.ProviderFactory;
 import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.managers.UserStorageSyncManager;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.UserStorageProviderModel;
 import org.keycloak.storage.ldap.LDAPStorageProvider;
-import org.keycloak.storage.ldap.LDAPStorageProviderFactory;
 import org.keycloak.storage.ldap.mappers.LDAPStorageMapper;
 import org.keycloak.storage.user.SynchronizationResult;
 
@@ -48,6 +46,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
+ * @resource User Storage Provider
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
@@ -80,9 +79,13 @@ public class UserStorageProviderResource {
         auth.init(RealmAuth.Resource.USER);
     }
 
-   /**
+    /**
      * Trigger sync of users
      *
+     * Action can be "triggerFullSync" or "triggerChangedUsersSync"
+     *
+     * @param id
+     * @param action
      * @return
      */
     @POST
@@ -90,7 +93,7 @@ public class UserStorageProviderResource {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public SynchronizationResult syncUsers(@PathParam("id") String id,
-                                               @QueryParam("action") String action) {
+                                           @QueryParam("action") String action) {
         auth.requireManage();
 
         ComponentModel model = realm.getComponent(id);
@@ -126,7 +129,56 @@ public class UserStorageProviderResource {
     }
 
     /**
+     * Remove imported users
+     *
+     *
+     * @param id
+     * @return
+     */
+    @POST
+    @Path("{id}/remove-imported-users")
+    @NoCache
+    public void removeImportedUsers(@PathParam("id") String id) {
+        auth.requireManage();
+
+        ComponentModel model = realm.getComponent(id);
+        if (model == null) {
+            throw new NotFoundException("Could not find component");
+        }
+        if (!model.getProviderType().equals(UserStorageProvider.class.getName())) {
+            throw new NotFoundException("found, but not a UserStorageProvider");
+        }
+
+        session.users().removeImportedUsers(realm, id);
+    }
+    /**
+     * Unlink imported users from a storage provider
+     *
+     *
+     * @param id
+     * @return
+     */
+    @POST
+    @Path("{id}/unlink-users")
+    @NoCache
+    public void unlinkUsers(@PathParam("id") String id) {
+        auth.requireManage();
+
+        ComponentModel model = realm.getComponent(id);
+        if (model == null) {
+            throw new NotFoundException("Could not find component");
+        }
+        if (!model.getProviderType().equals(UserStorageProvider.class.getName())) {
+            throw new NotFoundException("found, but not a UserStorageProvider");
+        }
+
+        session.users().unlinkUsers(realm, id);
+    }
+
+    /**
      * Trigger sync of mapper data related to ldap mapper (roles, groups, ...)
+     *
+     * direction is "fedToKeycloak" or "keycloakToFed"
      *
      * @return
      */
@@ -141,19 +193,17 @@ public class UserStorageProviderResource {
         if (parentModel == null) throw new NotFoundException("Parent model not found");
         ComponentModel mapperModel = realm.getComponent(mapperId);
         if (mapperModel == null) throw new NotFoundException("Mapper model not found");
-        LDAPStorageMapper mapper = session.getProvider(LDAPStorageMapper.class, mapperModel);
-        ProviderFactory factory = session.getKeycloakSessionFactory().getProviderFactory(UserStorageProvider.class, parentModel.getProviderId());
 
-        LDAPStorageProviderFactory providerFactory = (LDAPStorageProviderFactory)factory;
-        LDAPStorageProvider federationProvider = providerFactory.create(session, parentModel);
+        LDAPStorageProvider ldapProvider = (LDAPStorageProvider) session.getProvider(UserStorageProvider.class, parentModel);
+        LDAPStorageMapper mapper = session.getProvider(LDAPStorageMapper.class, mapperModel);
 
         ServicesLogger.LOGGER.syncingDataForMapper(mapperModel.getName(), mapperModel.getProviderId(), direction);
 
         SynchronizationResult syncResult;
         if ("fedToKeycloak".equals(direction)) {
-            syncResult = mapper.syncDataFromFederationProviderToKeycloak(mapperModel, federationProvider, session, realm);
+            syncResult = mapper.syncDataFromFederationProviderToKeycloak(realm);
         } else if ("keycloakToFed".equals(direction)) {
-            syncResult = mapper.syncDataFromKeycloakToFederationProvider(mapperModel, federationProvider, session, realm);
+            syncResult = mapper.syncDataFromKeycloakToFederationProvider(realm);
         } else {
             throw new BadRequestException("Unknown direction: " + direction);
         }

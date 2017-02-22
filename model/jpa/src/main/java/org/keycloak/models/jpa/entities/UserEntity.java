@@ -50,7 +50,8 @@ import java.util.Collection;
         @NamedQuery(name="getRealmUserByServiceAccount", query="select u from UserEntity u where u.serviceAccountClientLink = :clientInternalId and u.realmId = :realmId"),
         @NamedQuery(name="getRealmUserCount", query="select count(u) from UserEntity u where u.realmId = :realmId"),
         @NamedQuery(name="deleteUsersByRealm", query="delete from UserEntity u where u.realmId = :realmId"),
-        @NamedQuery(name="deleteUsersByRealmAndLink", query="delete from UserEntity u where u.realmId = :realmId and u.federationLink=:link")
+        @NamedQuery(name="deleteUsersByRealmAndLink", query="delete from UserEntity u where u.realmId = :realmId and u.federationLink=:link"),
+        @NamedQuery(name="unlinkUsers", query="update UserEntity u set u.federationLink = null where u.realmId = :realmId and u.federationLink=:link")
 })
 @Entity
 @Table(name="USER_ENTITY", uniqueConstraints = {
@@ -78,7 +79,7 @@ public class UserEntity {
     @Column(name = "EMAIL_VERIFIED")
     protected boolean emailVerified;
 
-    // Hack just to workaround the fact that on MS-SQL you can't have unique constraint with multiple NULL values TODO: Find better solution (like unique index with 'where' but that's proprietary)
+    // This is necessary to be able to dynamically switch unique email constraints on and off in the realm settings
     @Column(name = "EMAIL_CONSTRAINT")
     protected String emailConstraint = KeycloakModelUtils.generateId();
 
@@ -144,9 +145,9 @@ public class UserEntity {
         return email;
     }
 
-    public void setEmail(String email) {
+    public void setEmail(String email, boolean allowDuplicate) {
         this.email = email;
-        this.emailConstraint = email != null ? email : KeycloakModelUtils.generateId();
+        this.emailConstraint = email == null || allowDuplicate ? KeycloakModelUtils.generateId() : email;
     }
 
     public boolean isEnabled() {

@@ -24,6 +24,7 @@ import org.keycloak.authorization.model.Policy;
 import org.keycloak.authorization.model.Resource;
 import org.keycloak.authorization.model.ResourceServer;
 import org.keycloak.authorization.model.Scope;
+import org.keycloak.authorization.policy.provider.PolicyProvider;
 import org.keycloak.authorization.store.PolicyStore;
 import org.keycloak.authorization.store.ResourceServerStore;
 import org.keycloak.authorization.store.ResourceStore;
@@ -128,7 +129,7 @@ public class RepresentationToModel {
         return policy;
 
     }
-    public static void importRealm(KeycloakSession session, RealmRepresentation rep, RealmModel newRealm) {
+    public static void importRealm(KeycloakSession session, RealmRepresentation rep, RealmModel newRealm, boolean skipUserDependent) {
         convertDeprecatedSocialProviders(rep);
         convertDeprecatedApplications(session, rep);
 
@@ -184,6 +185,8 @@ public class RepresentationToModel {
             newRealm.setRegistrationEmailAsUsername(rep.isRegistrationEmailAsUsername());
         if (rep.isRememberMe() != null) newRealm.setRememberMe(rep.isRememberMe());
         if (rep.isVerifyEmail() != null) newRealm.setVerifyEmail(rep.isVerifyEmail());
+        if (rep.isLoginWithEmailAllowed() != null) newRealm.setLoginWithEmailAllowed(rep.isLoginWithEmailAllowed());
+        if (rep.isDuplicateEmailsAllowed() != null) newRealm.setDuplicateEmailsAllowed(rep.isDuplicateEmailsAllowed());
         if (rep.isResetPasswordAllowed() != null) newRealm.setResetPasswordAllowed(rep.isResetPasswordAllowed());
         if (rep.isEditUsernameAllowed() != null) newRealm.setEditUsernameAllowed(rep.isEditUsernameAllowed());
         if (rep.getLoginTheme() != null) newRealm.setLoginTheme(rep.getLoginTheme());
@@ -276,13 +279,6 @@ public class RepresentationToModel {
             }
         }
 
-        if (rep.getClients() != null) {
-            rep.getClients().forEach(clientRepresentation -> {
-                ClientModel client = newRealm.getClientByClientId(clientRepresentation.getClientId());
-                importAuthorizationSettings(clientRepresentation, client, session);
-            });
-        }
-
         if (rep.getSmtpServer() != null) {
             newRealm.setSmtpConfig(new HashMap(rep.getSmtpServer()));
         }
@@ -326,6 +322,10 @@ public class RepresentationToModel {
                 importFederatedUser(session, newRealm, userRep);
 
             }
+        }
+
+        if (!skipUserDependent) {
+            importRealmAuthorizationSettings(rep, newRealm, session);
         }
 
         if(rep.isInternationalizationEnabled() != null){
@@ -785,6 +785,8 @@ public class RepresentationToModel {
         if (rep.isRegistrationEmailAsUsername() != null) realm.setRegistrationEmailAsUsername(rep.isRegistrationEmailAsUsername());
         if (rep.isRememberMe() != null) realm.setRememberMe(rep.isRememberMe());
         if (rep.isVerifyEmail() != null) realm.setVerifyEmail(rep.isVerifyEmail());
+        if (rep.isLoginWithEmailAllowed() != null) realm.setLoginWithEmailAllowed(rep.isLoginWithEmailAllowed());
+        if (rep.isDuplicateEmailsAllowed() != null) realm.setDuplicateEmailsAllowed(rep.isDuplicateEmailsAllowed());
         if (rep.isResetPasswordAllowed() != null) realm.setResetPasswordAllowed(rep.isResetPasswordAllowed());
         if (rep.isEditUsernameAllowed() != null) realm.setEditUsernameAllowed(rep.isEditUsernameAllowed());
         if (rep.getSslRequired() != null) realm.setSslRequired(SslRequired.valueOf(rep.getSslRequired().toUpperCase()));
@@ -1366,7 +1368,7 @@ public class RepresentationToModel {
         }
         if (userRep.getRequiredActions() != null) {
             for (String requiredAction : userRep.getRequiredActions()) {
-                user.addRequiredAction(UserModel.RequiredAction.valueOf(requiredAction));
+                user.addRequiredAction(UserModel.RequiredAction.valueOf(requiredAction.toUpperCase()));
             }
         }
         createCredentials(userRep, session, newRealm, user);
@@ -1725,6 +1727,7 @@ public class RepresentationToModel {
 
     public static ComponentModel toModel(KeycloakSession session, ComponentRepresentation rep) {
         ComponentModel model = new ComponentModel();
+        model.setId(rep.getId());
         model.setParentId(rep.getParentId());
         model.setProviderType(rep.getProviderType());
         model.setProviderId(rep.getProviderId());
@@ -1805,6 +1808,15 @@ public class RepresentationToModel {
                     }
                 }
             }
+        }
+    }
+
+    public static void importRealmAuthorizationSettings(RealmRepresentation rep, RealmModel newRealm, KeycloakSession session) {
+        if (rep.getClients() != null) {
+            rep.getClients().forEach(clientRepresentation -> {
+                ClientModel client = newRealm.getClientByClientId(clientRepresentation.getClientId());
+                importAuthorizationSettings(clientRepresentation, client, session);
+            });
         }
     }
 
@@ -1894,7 +1906,7 @@ public class RepresentationToModel {
 
             if (roles != null && !roles.isEmpty()) {
                 try {
-                    List<Map> rolesMap = JsonSerialization.readValue(roles, List.class);
+                    List<Map> rolesMap = (List<Map>)JsonSerialization.readValue(roles, List.class);
                     config.put("roles", JsonSerialization.writeValueAsString(rolesMap.stream().map(roleConfig -> {
                         String roleName = roleConfig.get("id").toString();
                         String clientId = null;
@@ -1946,7 +1958,7 @@ public class RepresentationToModel {
 
             if (users != null && !users.isEmpty()) {
                 try {
-                    List<String> usersMap = JsonSerialization.readValue(users, List.class);
+                    List<String> usersMap = (List<String>) JsonSerialization.readValue(users, List.class);
                     config.put("users", JsonSerialization.writeValueAsString(usersMap.stream().map(userId -> {
                         UserModel user = session.users().getUserByUsername(userId, realm);
 
@@ -1970,12 +1982,12 @@ public class RepresentationToModel {
             if (scopes != null && !scopes.isEmpty()) {
                 try {
                     ScopeStore scopeStore = storeFactory.getScopeStore();
-                    List<String> scopesMap = JsonSerialization.readValue(scopes, List.class);
+                    List<String> scopesMap = (List<String>) JsonSerialization.readValue(scopes, List.class);
                     config.put("scopes", JsonSerialization.writeValueAsString(scopesMap.stream().map(scopeName -> {
                         Scope newScope = scopeStore.findByName(scopeName, resourceServer.getId());
 
                         if (newScope == null) {
-                            newScope = scopeStore.findById(scopeName);
+                            newScope = scopeStore.findById(scopeName, resourceServer.getId());
                         }
 
                         if (newScope == null) {
@@ -1995,21 +2007,18 @@ public class RepresentationToModel {
                 ResourceStore resourceStore = storeFactory.getResourceStore();
                 try {
                     List<String> resources = JsonSerialization.readValue(policyResources, List.class);
-                    config.put("resources", JsonSerialization.writeValueAsString(resources.stream().map(new Function<String, String>() {
-                        @Override
-                        public String apply(String resourceName) {
-                            Resource resource = resourceStore.findByName(resourceName, resourceServer.getId());
+                    config.put("resources", JsonSerialization.writeValueAsString(resources.stream().map(resourceName -> {
+                        Resource resource = resourceStore.findByName(resourceName, resourceServer.getId());
 
-                            if (resource == null) {
-                                resource = resourceStore.findById(resourceName);
-                            }
-
-                            if (resource == null) {
-                                throw new RuntimeException("Resource with name [" + resourceName + "] not defined.");
-                            }
-
-                            return resource.getId();
+                        if (resource == null) {
+                            resource = resourceStore.findById(resourceName, resourceServer.getId());
                         }
+
+                        if (resource == null) {
+                            throw new RuntimeException("Resource with name [" + resourceName + "] not defined.");
+                        }
+
+                        return resource.getId();
                     }).collect(Collectors.toList())));
                 } catch (Exception e) {
                     throw new RuntimeException("Error while exporting policy [" + policyRepresentation.getName() + "].", e);
@@ -2021,12 +2030,12 @@ public class RepresentationToModel {
             if (applyPolicies != null && !applyPolicies.isEmpty()) {
                 PolicyStore policyStore = storeFactory.getPolicyStore();
                 try {
-                    List<String> policies = JsonSerialization.readValue(applyPolicies, List.class);
+                    List<String> policies = (List<String>) JsonSerialization.readValue(applyPolicies, List.class);
                     config.put("applyPolicies", JsonSerialization.writeValueAsString(policies.stream().map(policyName -> {
                         Policy policy = policyStore.findByName(policyName, resourceServer.getId());
 
                         if (policy == null) {
-                            policy = policyStore.findById(policyName);
+                            policy = policyStore.findById(policyName, resourceServer.getId());
                         }
 
                         if (policy == null) {
@@ -2054,11 +2063,24 @@ public class RepresentationToModel {
     }
 
     public static Policy toModel(PolicyRepresentation policy, ResourceServer resourceServer, AuthorizationProvider authorization) {
+        String type = policy.getType();
+        PolicyProvider provider = authorization.getProvider(type);
+
+        if (provider == null) {
+            //TODO: temporary, remove this check on future versions as drools type is now deprecated
+            if ("drools".equalsIgnoreCase(type)) {
+                type = "rules";
+            }
+            if (authorization.getProvider(type) == null) {
+                throw new RuntimeException("Unknown polucy type [" + type + "]. Could not find a provider for this type.");
+            }
+        }
+
         PolicyStore policyStore = authorization.getStoreFactory().getPolicyStore();
         Policy existing;
 
         if (policy.getId() != null) {
-            existing = policyStore.findById(policy.getId());
+            existing = policyStore.findById(policy.getId(), resourceServer.getId());
         } else {
             existing = policyStore.findByName(policy.getName(), resourceServer.getId());
         }
@@ -2077,7 +2099,7 @@ public class RepresentationToModel {
             return existing;
         }
 
-        Policy model = policyStore.create(policy.getName(), policy.getType(), resourceServer);
+        Policy model = policyStore.create(policy.getName(), type, resourceServer);
 
         model.setDescription(policy.getDescription());
         model.setDecisionStrategy(policy.getDecisionStrategy());
@@ -2115,7 +2137,14 @@ public class RepresentationToModel {
                     }
                 }
                 if (!hasScope) {
-                    policy.addScope(storeFactory.getScopeStore().findById(scopeId));
+                    ResourceServer resourceServer = policy.getResourceServer();
+                    Scope scope = storeFactory.getScopeStore().findById(scopeId, resourceServer.getId());
+
+                    if (scope == null) {
+                        storeFactory.getScopeStore().findByName(scopeId, resourceServer.getId());
+                    }
+
+                    policy.addScope(scope);
                 }
             }
 
@@ -2131,6 +2160,8 @@ public class RepresentationToModel {
                     policy.removeScope(scopeModel);
                 }
             }
+
+            policy.getConfig().remove("scopes");
         }
     }
 
@@ -2160,7 +2191,7 @@ public class RepresentationToModel {
 
 
                 if (!hasPolicy) {
-                    Policy associatedPolicy = policyStore.findById(policyId);
+                    Policy associatedPolicy = policyStore.findById(policyId, resourceServer.getId());
 
                     if (associatedPolicy == null) {
                         associatedPolicy = policyStore.findByName(policyId, resourceServer.getId());
@@ -2182,6 +2213,8 @@ public class RepresentationToModel {
                     policy.removeAssociatedPolicy(policyModel);;
                 }
             }
+
+            policy.getConfig().remove("applyPolicies");
         }
     }
 
@@ -2206,7 +2239,13 @@ public class RepresentationToModel {
                     }
                 }
                 if (!hasResource && !"".equals(resourceId)) {
-                    policy.addResource(storeFactory.getResourceStore().findById(resourceId));
+                    Resource resource = storeFactory.getResourceStore().findById(resourceId, policy.getResourceServer().getId());
+
+                    if (resource == null) {
+                        throw new RuntimeException("Resource [" + resourceId + "] not found.");
+                    }
+
+                    policy.addResource(resource);
                 }
             }
 
@@ -2223,6 +2262,8 @@ public class RepresentationToModel {
                     policy.removeResource(resourceModel);
                 }
             }
+
+            policy.getConfig().remove("resources");
         }
     }
 
@@ -2231,7 +2272,7 @@ public class RepresentationToModel {
         Resource existing;
 
         if (resource.getId() != null) {
-            existing = resourceStore.findById(resource.getId());
+            existing = resourceStore.findById(resource.getId(), resourceServer.getId());
         } else {
             existing = resourceStore.findByName(resource.getName(), resourceServer.getId());
         }
@@ -2282,7 +2323,7 @@ public class RepresentationToModel {
         Scope existing;
 
         if (scope.getId() != null) {
-            existing = scopeStore.findById(scope.getId());
+            existing = scopeStore.findById(scope.getId(), resourceServer.getId());
         } else {
             existing = scopeStore.findByName(scope.getName(), resourceServer.getId());
         }

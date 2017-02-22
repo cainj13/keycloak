@@ -25,6 +25,7 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.message.BasicNameValuePair;
 import org.jboss.logging.Logger;
+
 import org.keycloak.connections.httpclient.HttpClientProvider;
 import org.keycloak.dom.saml.v2.assertion.AssertionType;
 import org.keycloak.dom.saml.v2.assertion.AttributeStatementType;
@@ -54,11 +55,13 @@ import org.keycloak.saml.common.constants.JBossSAMLURIConstants;
 import org.keycloak.saml.common.exceptions.ConfigurationException;
 import org.keycloak.saml.common.exceptions.ParsingException;
 import org.keycloak.saml.common.exceptions.ProcessingException;
+import org.keycloak.saml.common.util.XmlKeyInfoKeyNameTransformer;
 import org.keycloak.services.ErrorPage;
 import org.keycloak.services.managers.ClientSessionCode;
 import org.keycloak.services.managers.ResourceAdminManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.RealmsResource;
+
 import org.w3c.dom.Document;
 
 import javax.ws.rs.core.HttpHeaders;
@@ -77,6 +80,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+
 import org.keycloak.saml.processing.core.util.KeycloakKeySamlExtensionGenerator;
 
 /**
@@ -101,6 +105,7 @@ public class SamlProtocol implements LoginProtocol {
     public static final String SAML_REQUEST_ID = "SAML_REQUEST_ID";
     public static final String SAML_LOGOUT_BINDING = "saml.logout.binding";
     public static final String SAML_LOGOUT_ADD_EXTENSIONS_ELEMENT_WITH_KEY_INFO = "saml.logout.addExtensionsElementWithKeyInfo";
+    public static final String SAML_SERVER_SIGNATURE_KEYINFO_KEY_NAME_TRANSFORMER = "SAML_SERVER_SIGNATURE_KEYINFO_KEY_NAME_TRANSFORMER";
     public static final String SAML_LOGOUT_REQUEST_ID = "SAML_LOGOUT_REQUEST_ID";
     public static final String SAML_LOGOUT_RELAY_STATE = "SAML_LOGOUT_RELAY_STATE";
     public static final String SAML_LOGOUT_CANONICALIZATION = "SAML_LOGOUT_CANONICALIZATION";
@@ -156,13 +161,15 @@ public class SamlProtocol implements LoginProtocol {
     @Override
     public Response sendError(ClientSessionModel clientSession, Error error) {
         try {
-            if ("true".equals(clientSession.getClient().getAttribute(SAML_IDP_INITIATED_LOGIN))) {
+            ClientModel client = clientSession.getClient();
+
+            if ("true".equals(client.getAttribute(SAML_IDP_INITIATED_LOGIN))) {
                 if (error == Error.CANCELLED_BY_USER) {
                     UriBuilder builder = RealmsResource.protocolUrl(uriInfo).path(SamlService.class, "idpInitiatedSSO");
                     Map<String, String> params = new HashMap<>();
                     params.put("realm", realm.getName());
                     params.put("protocol", LOGIN_PROTOCOL);
-                    params.put("client", clientSession.getClient().getAttribute(SAML_IDP_INITIATED_SSO_URL_NAME));
+                    params.put("client", client.getAttribute(SAML_IDP_INITIATED_SSO_URL_NAME));
                     URI redirect = builder.buildFromMap(params);
                     return Response.status(302).location(redirect).build();
                 } else {
@@ -172,6 +179,27 @@ public class SamlProtocol implements LoginProtocol {
                 SAML2ErrorResponseBuilder builder = new SAML2ErrorResponseBuilder().destination(clientSession.getRedirectUri()).issuer(getResponseIssuer(realm)).status(translateErrorToSAMLStatus(error).get());
                 try {
                     JaxrsSAML2BindingBuilder binding = new JaxrsSAML2BindingBuilder().relayState(clientSession.getNote(GeneralConstants.RELAY_STATE));
+                    SamlClient samlClient = new SamlClient(client);
+                    KeyManager keyManager = session.keys();
+                    if (samlClient.requiresRealmSignature()) {
+                        KeyManager.ActiveRsaKey keys = keyManager.getActiveRsaKey(realm);
+                        String keyName = samlClient.getXmlSigKeyInfoKeyNameTransformer().getKeyName(keys.getKid(), keys.getCertificate());
+                        String canonicalization = samlClient.getCanonicalizationMethod();
+                        if (canonicalization != null) {
+                            binding.canonicalizationMethod(canonicalization);
+                        }
+                        binding.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keyName, keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
+                    }
+                    if (samlClient.requiresEncryption()) {
+                        PublicKey publicKey;
+                        try {
+                            publicKey = SamlProtocolUtils.getEncryptionValidationKey(client);
+                        } catch (Exception e) {
+                            logger.error("failed", e);
+                            return ErrorPage.error(session, Messages.FAILED_TO_PROCESS_RESPONSE);
+                        }
+                        binding.encrypt(publicKey);
+                    }
                     Document document = builder.buildDocument();
                     return buildErrorResponse(clientSession, binding, document);
                 } catch (Exception e) {
@@ -240,9 +268,9 @@ public class SamlProtocol implements LoginProtocol {
         String logoutPostUrl = client.getAttribute(SAML_SINGLE_LOGOUT_SERVICE_URL_POST_ATTRIBUTE);
         String logoutRedirectUrl = client.getAttribute(SAML_SINGLE_LOGOUT_SERVICE_URL_REDIRECT_ATTRIBUTE);
 
-        if (logoutPostUrl == null) {
+        if (logoutPostUrl == null || logoutPostUrl.trim().isEmpty()) {
             // if we don't have a redirect uri either, return true and default to the admin url + POST binding
-            if (logoutRedirectUrl == null)
+            if (logoutRedirectUrl == null || logoutRedirectUrl.trim().isEmpty())
                 return true;
             return false;
         }
@@ -257,7 +285,7 @@ public class SamlProtocol implements LoginProtocol {
         if (SAML_POST_BINDING.equals(bindingType))
             return true;
 
-        if (logoutRedirectUrl == null)
+        if (logoutRedirectUrl == null || logoutRedirectUrl.trim().isEmpty())
             return true; // we don't have a redirect binding url, so use post binding
 
         return false; // redirect binding
@@ -377,12 +405,13 @@ public class SamlProtocol implements LoginProtocol {
 
         Document samlDocument = null;
         KeyManager keyManager = session.keys();
-        KeyManager.ActiveKey keys = keyManager.getActiveKey(realm);
+        KeyManager.ActiveRsaKey keys = keyManager.getActiveRsaKey(realm);
         boolean postBinding = isPostBinding(clientSession);
+        String keyName = samlClient.getXmlSigKeyInfoKeyNameTransformer().getKeyName(keys.getKid(), keys.getCertificate());
 
         try {
             if ((! postBinding) && samlClient.requiresRealmSignature() && samlClient.addExtensionsElementWithKeyInfo()) {
-                builder.addExtension(new KeycloakKeySamlExtensionGenerator(keys.getKid()));
+                builder.addExtension(new KeycloakKeySamlExtensionGenerator(keyName));
             }
 
             ResponseType samlModel = builder.buildModel();
@@ -410,14 +439,14 @@ public class SamlProtocol implements LoginProtocol {
             if (canonicalization != null) {
                 bindingBuilder.canonicalizationMethod(canonicalization);
             }
-            bindingBuilder.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keys.getKid(), keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
+            bindingBuilder.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keyName, keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
         }
         if (samlClient.requiresAssertionSignature()) {
             String canonicalization = samlClient.getCanonicalizationMethod();
             if (canonicalization != null) {
                 bindingBuilder.canonicalizationMethod(canonicalization);
             }
-            bindingBuilder.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keys.getKid(), keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signAssertions();
+            bindingBuilder.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keyName, keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signAssertions();
         }
         if (samlClient.requiresEncryption()) {
             PublicKey publicKey = null;
@@ -512,8 +541,9 @@ public class SamlProtocol implements LoginProtocol {
                 String bindingUri = getLogoutServiceUrl(uriInfo, client, SAML_REDIRECT_BINDING);
                 SAML2LogoutRequestBuilder logoutBuilder = createLogoutRequest(bindingUri, clientSession, client);
                 if (samlClient.requiresRealmSignature() && samlClient.addExtensionsElementWithKeyInfo()) {
-                    KeyManager.ActiveKey keys = session.keys().getActiveKey(realm);
-                    logoutBuilder.addExtension(new KeycloakKeySamlExtensionGenerator(keys.getKid()));
+                    KeyManager.ActiveRsaKey keys = session.keys().getActiveRsaKey(realm);
+                    String keyName = samlClient.getXmlSigKeyInfoKeyNameTransformer().getKeyName(keys.getKid(), keys.getCertificate());
+                    logoutBuilder.addExtension(new KeycloakKeySamlExtensionGenerator(keyName));
                 }
                 JaxrsSAML2BindingBuilder binding = createBindingBuilder(samlClient);
                 return binding.redirectBinding(logoutBuilder.buildDocument()).request(bindingUri);
@@ -554,11 +584,15 @@ public class SamlProtocol implements LoginProtocol {
             if (canonicalization != null) {
                 binding.canonicalizationMethod(canonicalization);
             }
-            KeyManager.ActiveKey keys = session.keys().getActiveKey(realm);
-            binding.signatureAlgorithm(algorithm).signWith(keys.getKid(), keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
+            KeyManager.ActiveRsaKey keys = session.keys().getActiveRsaKey(realm);
+            XmlKeyInfoKeyNameTransformer transformer = XmlKeyInfoKeyNameTransformer.from(
+              userSession.getNote(SAML_SERVER_SIGNATURE_KEYINFO_KEY_NAME_TRANSFORMER),
+              SamlClient.DEFAULT_XML_KEY_INFO_KEY_NAME_TRANSFORMER);
+            String keyName = transformer.getKeyName(keys.getKid(), keys.getCertificate());
+            binding.signatureAlgorithm(algorithm).signWith(keyName, keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
             boolean addExtension = (! postBinding) && Objects.equals("true", userSession.getNote(SamlProtocol.SAML_LOGOUT_ADD_EXTENSIONS_ELEMENT_WITH_KEY_INFO));
             if (addExtension) {    // Only include extension if REDIRECT binding and signing whole SAML protocol message
-                builder.addExtension(new KeycloakKeySamlExtensionGenerator(keys.getKid()));
+                builder.addExtension(new KeycloakKeySamlExtensionGenerator(keyName));
             }
         }
 
@@ -657,8 +691,9 @@ public class SamlProtocol implements LoginProtocol {
     private JaxrsSAML2BindingBuilder createBindingBuilder(SamlClient samlClient) {
         JaxrsSAML2BindingBuilder binding = new JaxrsSAML2BindingBuilder();
         if (samlClient.requiresRealmSignature()) {
-            KeyManager.ActiveKey keys = session.keys().getActiveKey(realm);
-            binding.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keys.getKid(), keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
+            KeyManager.ActiveRsaKey keys = session.keys().getActiveRsaKey(realm);
+            String keyName = samlClient.getXmlSigKeyInfoKeyNameTransformer().getKeyName(keys.getKid(), keys.getCertificate());
+            binding.signatureAlgorithm(samlClient.getSignatureAlgorithm()).signWith(keyName, keys.getPrivateKey(), keys.getPublicKey(), keys.getCertificate()).signDocument();
         }
         return binding;
     }

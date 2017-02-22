@@ -177,27 +177,34 @@ public final class KeycloakModelUtils {
      * @param visited   set of already visited roles (used for recursion)
      * @return true if "role" is descendant of "composite"
      */
-    public static boolean searchFor(RoleModel role, RoleModel composite, Set<RoleModel> visited) {
-        if (visited.contains(composite)) return false;
-        visited.add(composite);
-        Set<RoleModel> composites = composite.getComposites();
-        if (composites.contains(role)) return true;
-        for (RoleModel contained : composites) {
-            if (!contained.isComposite()) continue;
-            if (searchFor(role, contained, visited)) return true;
+    public static boolean searchFor(RoleModel role, RoleModel composite, Set<String> visited) {
+        if (visited.contains(composite.getId())) {
+            return false;
         }
-        return false;
+
+        visited.add(composite.getId());
+
+        if (!composite.isComposite()) {
+            return false;
+        }
+
+        Set<RoleModel> compositeRoles = composite.getComposites();
+        return compositeRoles.contains(role) ||
+                        compositeRoles.stream()
+                                .filter(x -> x.isComposite() && searchFor(role, x, visited))
+                                .findFirst()
+                                .isPresent();
     }
 
     /**
-     * Try to find user by username or email
+     * Try to find user by username or email for authentication
      *
      * @param realm    realm
      * @param username username or email of user
      * @return found user
      */
     public static UserModel findUserByNameOrEmail(KeycloakSession session, RealmModel realm, String username) {
-        if (username.indexOf('@') != -1) {
+        if (realm.isLoginWithEmailAllowed() && username.indexOf('@') != -1) {
             UserModel user = session.users().getUserByEmail(username, realm);
             if (user != null) {
                 return user;

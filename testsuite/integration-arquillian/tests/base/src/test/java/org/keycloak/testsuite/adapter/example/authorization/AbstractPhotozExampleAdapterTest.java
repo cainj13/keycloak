@@ -59,6 +59,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.keycloak.testsuite.util.IOUtil.loadJson;
 import static org.keycloak.testsuite.util.IOUtil.loadRealm;
+import static org.keycloak.testsuite.util.WaitUtils.waitUntilElement;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
@@ -110,7 +111,7 @@ public abstract class AbstractPhotozExampleAdapterTest extends AbstractExampleAd
         return exampleDeployment(PhotozClientAuthzTestApp.DEPLOYMENT_NAME);
     }
 
-    @Deployment(name = RESOURCE_SERVER_ID, managed = false)
+    @Deployment(name = RESOURCE_SERVER_ID, managed = false, testable = false)
     public static WebArchive deploymentResourceServer() throws IOException {
         return exampleDeployment(RESOURCE_SERVER_ID);
     }
@@ -136,6 +137,22 @@ public abstract class AbstractPhotozExampleAdapterTest extends AbstractExampleAd
 
             resources = getAuthorizationResource().resources().resources();
             assertTrue(resources.stream().filter(resource -> resource.getOwner().getName().equals("alice")).collect(Collectors.toList()).isEmpty());
+        } finally {
+            this.deployer.undeploy(RESOURCE_SERVER_ID);
+        }
+    }
+
+    @Test
+    public void createAlbumWithInvalidUser() {
+        try {
+            this.deployer.deploy(RESOURCE_SERVER_ID);
+
+            loginToClientPage("alice", "alice");
+
+            clientPage.createAlbumWithInvalidUser("Alice Family Album");
+
+            waitUntilElement(clientPage.getOutput()).text().not().contains("Request was successful");
+            waitUntilElement(clientPage.getOutput()).text().contains("Could not register protected resource");
         } finally {
             this.deployer.undeploy(RESOURCE_SERVER_ID);
         }
@@ -605,6 +622,27 @@ public abstract class AbstractPhotozExampleAdapterTest extends AbstractExampleAd
                     resourcesResource.resource(resource.getId()).update(resource);
                 }
             });
+        } finally {
+            this.deployer.undeploy(RESOURCE_SERVER_ID);
+        }
+    }
+    
+    //KEYCLOAK-3777
+    @Test
+    public void testEntitlementRequest() {
+        try {
+            this.deployer.deploy(RESOURCE_SERVER_ID);
+            
+            clientPage.navigateTo();
+            loginToClientPage("admin", "admin");
+
+            clientPage.requestEntitlements();
+            assertTrue(driver.getPageSource().contains("urn:photoz.com:scopes:album:admin:manage"));
+            
+            clientPage.requestEntitlement();
+            String pageSource = driver.getPageSource();
+            assertTrue(pageSource.contains("urn:photoz.com:scopes:album:view"));
+            assertFalse(pageSource.contains("urn:photoz.com:scopes:album:admin:manage"));
         } finally {
             this.deployer.undeploy(RESOURCE_SERVER_ID);
         }

@@ -169,6 +169,7 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
     @Override
     public void setRegistrationEmailAsUsername(boolean registrationEmailAsUsername) {
         realm.setRegistrationEmailAsUsername(registrationEmailAsUsername);
+        if (registrationEmailAsUsername) realm.setDuplicateEmailsAllowed(false);
         em.flush();
     }
 
@@ -345,6 +346,33 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
     @Override
     public void setVerifyEmail(boolean verifyEmail) {
         realm.setVerifyEmail(verifyEmail);
+        em.flush();
+    }
+    
+    @Override
+    public boolean isLoginWithEmailAllowed() {
+        return realm.isLoginWithEmailAllowed();
+    }
+
+    @Override
+    public void setLoginWithEmailAllowed(boolean loginWithEmailAllowed) {
+        realm.setLoginWithEmailAllowed(loginWithEmailAllowed);
+        if (loginWithEmailAllowed) realm.setDuplicateEmailsAllowed(false);
+        em.flush();
+    }
+    
+    @Override
+    public boolean isDuplicateEmailsAllowed() {
+        return realm.isDuplicateEmailsAllowed();
+    }
+
+    @Override
+    public void setDuplicateEmailsAllowed(boolean duplicateEmailsAllowed) {
+        realm.setDuplicateEmailsAllowed(duplicateEmailsAllowed);
+        if (duplicateEmailsAllowed) {
+            realm.setLoginWithEmailAllowed(false);
+            realm.setRegistrationEmailAsUsername(false);
+        }
         em.flush();
     }
 
@@ -1030,6 +1058,7 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
         for (IdentityProviderEntity entity : realm.getIdentityProviders()) {
             if (entity.getAlias().equals(alias)) {
 
+                IdentityProviderModel model = entityToModel(entity);
                 em.remove(entity);
                 em.flush();
 
@@ -1042,7 +1071,7 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
 
                     @Override
                     public IdentityProviderModel getRemovedIdentityProvider() {
-                        return entityToModel(entity);
+                        return model;
                     }
 
                     @Override
@@ -1748,14 +1777,28 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
         return model;
     }
 
+    /**
+     * This just exists for testing purposes
+     *
+     */
+    public static final String COMPONENT_PROVIDER_EXISTS_DISABLED = "component.provider.exists.disabled";
+
     @Override
     public ComponentModel importComponentModel(ComponentModel model) {
-        ComponentFactory componentFactory = ComponentUtil.getComponentFactory(session, model);
-        if (componentFactory == null) {
-            throw new IllegalArgumentException("Invalid component type");
+        ComponentFactory componentFactory = null;
+        try {
+            componentFactory = ComponentUtil.getComponentFactory(session, model);
+            if (componentFactory == null && System.getProperty(COMPONENT_PROVIDER_EXISTS_DISABLED) == null) {
+                throw new IllegalArgumentException("Invalid component type");
+            }
+            componentFactory.validateConfiguration(session, this, model);
+        } catch (Exception e) {
+            if (System.getProperty(COMPONENT_PROVIDER_EXISTS_DISABLED) == null) {
+                throw e;
+            }
+
         }
 
-        componentFactory.validateConfiguration(session, this, model);
 
         ComponentEntity c = new ComponentEntity();
         if (model.getId() == null) {
@@ -1802,6 +1845,7 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
 
         ComponentEntity c = em.find(ComponentEntity.class, component.getId());
         if (c == null) return;
+        ComponentModel old = entityToModel(c);
         c.setName(component.getName());
         c.setProviderId(component.getProviderId());
         c.setProviderType(component.getProviderType());
@@ -1810,6 +1854,7 @@ public class RealmAdapter implements RealmModel, JpaModel<RealmEntity> {
         em.createNamedQuery("deleteComponentConfigByComponent").setParameter("component", c).executeUpdate();
         em.flush();
         setConfig(component, c);
+        ComponentUtil.notifyUpdated(session, this, old, component);
 
 
     }

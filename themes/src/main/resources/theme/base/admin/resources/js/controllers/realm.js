@@ -764,11 +764,17 @@ module.controller('RealmIdentityProviderCtrl', function($scope, $filter, $upload
             "RSA_SHA512",
             "DSA_SHA1"
         ];
+        $scope.xmlKeyNameTranformers = [
+            "NONE",
+            "KEY_ID",
+            "CERT_SUBJECT"
+        ];
         if (instance && instance.alias) {
 
         } else {
             $scope.identityProvider.config.nameIDPolicyFormat = $scope.nameIdFormats[0].format;
             $scope.identityProvider.config.signatureAlgorithm = $scope.signatureAlgorithms[1];
+            $scope.identityProvider.config.samlXmlKeyNameTranformer = $scope.xmlKeyNameTranformers[1];
         }
     }
 
@@ -1120,6 +1126,14 @@ module.controller('RealmKeysProvidersCtrl', function($scope, Realm, realm, $http
         type: 'org.keycloak.keys.KeyProvider'
     }, function(data) {
         $scope.instances = data;
+
+        for (var i = 0; i < $scope.instances.length; i++) {
+            for (var j = 0; j < $scope.providers.length; j++) {
+                if ($scope.providers[j].id === $scope.instances[i].providerId) {
+                    $scope.instances[i].provider = $scope.providers[j];
+                }
+            }
+        }
     });
 
     $scope.addProvider = function(provider) {
@@ -1468,11 +1482,6 @@ module.controller('RealmEventsConfigCtrl', function($scope, eventsConfig, RealmE
 
     $scope.eventsConfig.expirationUnit = TimeUnit.autoUnit(eventsConfig.eventsExpiration);
     $scope.eventsConfig.eventsExpiration = TimeUnit.toUnit(eventsConfig.eventsExpiration, $scope.eventsConfig.expirationUnit);
-    $scope.$watch('eventsConfig.expirationUnit', function(to, from) {
-        if ($scope.eventsConfig.eventsExpiration) {
-            $scope.eventsConfig.eventsExpiration = TimeUnit.convert($scope.eventsConfig.eventsExpiration, from, to);
-        }
-    });
 
     $scope.eventListeners = Object.keys(serverInfo.providers.eventsListener.providers);
 
@@ -1703,34 +1712,22 @@ module.controller('RealmAdminEventsModalCtrl', function($scope, $filter, event) 
     $scope.event = event;
 });
 
-module.controller('RealmBruteForceCtrl', function($scope, Realm, realm, $http, $location, Dialog, Notifications, TimeUnit) {
+module.controller('RealmBruteForceCtrl', function($scope, Realm, realm, $http, $location, Dialog, Notifications, TimeUnit, $route) {
     console.log('RealmBruteForceCtrl');
 
     $scope.realm = realm;
 
     $scope.realm.waitIncrementUnit = TimeUnit.autoUnit(realm.waitIncrementSeconds);
     $scope.realm.waitIncrement = TimeUnit.toUnit(realm.waitIncrementSeconds, $scope.realm.waitIncrementUnit);
-    $scope.$watch('realm.waitIncrementUnit', function(to, from) {
-        $scope.realm.waitIncrement = TimeUnit.convert($scope.realm.waitIncrement, from, to);
-    });
 
     $scope.realm.minimumQuickLoginWaitUnit = TimeUnit.autoUnit(realm.minimumQuickLoginWaitSeconds);
     $scope.realm.minimumQuickLoginWait = TimeUnit.toUnit(realm.minimumQuickLoginWaitSeconds, $scope.realm.minimumQuickLoginWaitUnit);
-    $scope.$watch('realm.minimumQuickLoginWaitUnit', function(to, from) {
-        $scope.realm.minimumQuickLoginWait = TimeUnit.convert($scope.realm.minimumQuickLoginWait, from, to);
-    });
 
     $scope.realm.maxFailureWaitUnit = TimeUnit.autoUnit(realm.maxFailureWaitSeconds);
     $scope.realm.maxFailureWait = TimeUnit.toUnit(realm.maxFailureWaitSeconds, $scope.realm.maxFailureWaitUnit);
-    $scope.$watch('realm.maxFailureWaitUnit', function(to, from) {
-        $scope.realm.maxFailureWait = TimeUnit.convert($scope.realm.maxFailureWait, from, to);
-    });
 
     $scope.realm.maxDeltaTimeUnit = TimeUnit.autoUnit(realm.maxDeltaTimeSeconds);
     $scope.realm.maxDeltaTime = TimeUnit.toUnit(realm.maxDeltaTimeSeconds, $scope.realm.maxDeltaTimeUnit);
-    $scope.$watch('realm.maxDeltaTimeUnit', function(to, from) {
-        $scope.realm.maxDeltaTime = TimeUnit.convert($scope.realm.maxDeltaTime, from, to);
-    });
 
     var oldCopy = angular.copy($scope.realm);
     $scope.changed = false;
@@ -1766,8 +1763,7 @@ module.controller('RealmBruteForceCtrl', function($scope, Realm, realm, $http, $
     };
 
     $scope.reset = function() {
-        $scope.realm = angular.copy(oldCopy);
-        $scope.changed = false;
+        $route.reload();
     };
 });
 
@@ -2320,10 +2316,6 @@ module.controller('ClientInitialAccessCreateCtrl', function($scope, realm, Clien
     $scope.count = 1;
     $scope.realm = realm;
 
-    $scope.$watch('expirationUnit', function(to, from) {
-        $scope.expiration = TimeUnit.convert($scope.expiration, from, to);
-    });
-
     $scope.save = function() {
         var expiration = TimeUnit.toSeconds($scope.expiration, $scope.expirationUnit);
         ClientInitialAccess.save({
@@ -2638,11 +2630,19 @@ module.controller('RealmImportCtrl', function($scope, realm, $route,
     $scope.itemCount = function(section) {
         if (!$scope.importing) return 0;
         if ($scope.hasRealmRoles() && (section === 'roles.realm')) return $scope.fileContent.roles.realm.length;
-        if ($scope.hasClientRoles() && (section === 'roles.client')) return Object.keys($scope.fileContent.roles.client).length;
+        if ($scope.hasClientRoles() && (section === 'roles.client')) return clientRolesCount($scope.fileContent.roles.client);
         
         if (!$scope.fileContent.hasOwnProperty(section)) return 0;
         
         return $scope.fileContent[section].length;
+    }
+    
+    clientRolesCount = function(clientRoles) {
+        var total = 0;
+        for (var clientName in clientRoles) {
+            total += clientRoles[clientName].length;
+        }
+        return total;
     }
     
     $scope.hasResources = function() {

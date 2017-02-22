@@ -89,7 +89,11 @@ public abstract class AbstractPhotozAdminTest extends AbstractAuthorizationTest 
             StoreFactory storeFactory = authorizationProvider.getStoreFactory();
             ResourceServerStore resourceServerStore = storeFactory.getResourceServerStore();
 
-            return resourceServerStore.create(getClientByClientId("photoz-restful-api").getId());
+            ResourceServer resourceServer = resourceServerStore.create(getClientByClientId("photoz-restful-api").getId());
+
+            resourceServer.setAllowRemoteResourceManagement(true);
+
+            return resourceServer;
         });
     }
 
@@ -101,7 +105,7 @@ public abstract class AbstractPhotozAdminTest extends AbstractAuthorizationTest 
 
             // during tests we create resource instances, but we need to reload them to get their collections updated
             List<ResourcePermission> updatedPermissions = permissions.stream().map(permission -> {
-                Resource resource = storeFactory.getResourceStore().findById(permission.getResource().getId());
+                Resource resource = storeFactory.getResourceStore().findById(permission.getResource().getId(), resourceServer.getId());
                 return new ResourcePermission(resource, permission.getScopes(), permission.getResourceServer());
             }).collect(Collectors.toList());
 

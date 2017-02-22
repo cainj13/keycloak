@@ -50,6 +50,7 @@ public class KcOidcBrokerConfiguration implements BrokerConfiguration {
     public List<ClientRepresentation> createProviderClients(SuiteContext suiteContext) {
         ClientRepresentation client = new ClientRepresentation();
         client.setId(CLIENT_ID);
+        client.setClientId(getIDPClientIdInProviderRealm(suiteContext));
         client.setName(CLIENT_ID);
         client.setSecret(CLIENT_SECRET);
         client.setEnabled(true);
@@ -87,7 +88,7 @@ public class KcOidcBrokerConfiguration implements BrokerConfiguration {
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ACCESS_TOKEN, "true");
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_USERINFO, "true");
-//        userAttrMapperConfig.put(ProtocolMapperUtils.MULTIVALUED, "true");
+        userAttrMapperConfig.put(ProtocolMapperUtils.MULTIVALUED, "true");
 
         client.setProtocolMappers(Arrays.asList(emailMapper, userAttrMapper));
 
@@ -121,6 +122,11 @@ public class KcOidcBrokerConfiguration implements BrokerConfiguration {
     @Override
     public String getUserLogin() {
         return USER_LOGIN;
+    }
+
+    @Override
+    public String getIDPClientIdInProviderRealm(SuiteContext suiteContext) {
+        return CLIENT_ID;
     }
 
     @Override

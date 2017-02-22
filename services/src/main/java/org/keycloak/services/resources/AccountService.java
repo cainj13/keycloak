@@ -36,7 +36,6 @@ import org.keycloak.models.IdentityProviderModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ModelDuplicateException;
 import org.keycloak.models.ModelException;
-import org.keycloak.models.ModelReadOnlyException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserModel;
@@ -58,6 +57,7 @@ import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.util.ResolveRelative;
 import org.keycloak.services.validation.Validation;
+import org.keycloak.storage.ReadOnlyException;
 import org.keycloak.util.JsonSerialization;
 
 import javax.ws.rs.Consumes;
@@ -400,7 +400,7 @@ public class AccountService extends AbstractSecuredLocalService {
             String email = formData.getFirst("email");
             String oldEmail = user.getEmail();
             boolean emailChanged = oldEmail != null ? !oldEmail.equals(email) : email != null;
-            if (emailChanged) {
+            if (emailChanged && !realm.isDuplicateEmailsAllowed()) {
                 UserModel existing = session.users().getUserByEmail(email, realm);
                 if (existing != null && !existing.getId().equals(user.getId())) {
                     throw new ModelDuplicateException(Messages.EMAIL_EXISTS);
@@ -417,9 +417,20 @@ public class AccountService extends AbstractSecuredLocalService {
                 user.setEmailVerified(false);
                 event.clone().event(EventType.UPDATE_EMAIL).detail(Details.PREVIOUS_EMAIL, oldEmail).detail(Details.UPDATED_EMAIL, email).success();
             }
+
+            if (realm.isRegistrationEmailAsUsername()) {
+                if (!realm.isDuplicateEmailsAllowed()) {
+                    UserModel existing = session.users().getUserByEmail(email, realm);
+                    if (existing != null && !existing.getId().equals(user.getId())) {
+                        throw new ModelDuplicateException(Messages.USERNAME_EXISTS);
+                    }
+                }
+                user.setUsername(email);
+            }
+
             setReferrerOnPage();
             return account.setSuccess(Messages.ACCOUNT_UPDATED).createResponse(AccountPages.ACCOUNT);
-        } catch (ModelReadOnlyException roe) {
+        } catch (ReadOnlyException roe) {
             setReferrerOnPage();
             return account.setError(Messages.READ_ONLY_USER).setProfileFormData(formData).createResponse(AccountPages.ACCOUNT);
         } catch (ModelDuplicateException mde) {
@@ -477,6 +488,7 @@ public class AccountService extends AbstractSecuredLocalService {
 
     @Path("revoke-grant")
     @POST
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     public Response processRevokeGrant(final MultivaluedMap<String, String> formData) {
         if (auth == null) {
             return login("applications");
@@ -638,8 +650,8 @@ public class AccountService extends AbstractSecuredLocalService {
         }
 
         try {
-            session.userCredentialManager().updateCredential(realm, user, UserCredentialModel.password(passwordNew));
-        } catch (ModelReadOnlyException mre) {
+            session.userCredentialManager().updateCredential(realm, user, UserCredentialModel.password(passwordNew, false));
+        } catch (ReadOnlyException mre) {
             setReferrerOnPage();
             errorEvent.error(Errors.NOT_ALLOWED);
             return account.setError(Messages.READ_ONLY_PASSWORD).createResponse(AccountPages.PASSWORD);
@@ -788,7 +800,11 @@ public class AccountService extends AbstractSecuredLocalService {
             }
 
             if (referrerUri != null) {
-                return new String[]{referrer, referrerUri};
+                String referrerName = referrerClient.getName();
+                if (Validation.isBlank(referrerName)) {
+                    referrerName = referrer;
+                }
+                return new String[]{referrerName, referrerUri};
             }
         } else if (referrerUri != null) {
             referrerClient = realm.getClientByClientId(referrer);

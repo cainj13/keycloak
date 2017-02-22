@@ -26,7 +26,7 @@ import org.keycloak.models.utils.TimeBasedOTP;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.AssertEvents;
-import org.keycloak.testsuite.TestRealmKeycloakTest;
+import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.AppPage.RequestType;
 import org.keycloak.testsuite.pages.LoginPage;
@@ -41,7 +41,7 @@ import java.net.MalformedURLException;
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
-public class LoginTotpTest extends TestRealmKeycloakTest {
+public class LoginTotpTest extends AbstractTestRealmKeycloakTest {
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
@@ -119,6 +119,26 @@ public class LoginTotpTest extends TestRealmKeycloakTest {
         loginPage.login("test-user@localhost", "password");
 
         Assert.assertTrue(loginTotpPage.isCurrent());
+
+        loginTotpPage.login(totp.generateTOTP("totpSecret"));
+
+        Assert.assertEquals(RequestType.AUTH_RESPONSE, appPage.getRequestType());
+
+        events.expectLogin().assertEvent();
+    }
+
+    // KEYCLOAK-3835
+    @Test
+    public void loginWithTotpRefreshTotpPage() throws Exception {
+        loginPage.open();
+        loginPage.login("test-user@localhost", "password");
+
+        Assert.assertTrue(loginTotpPage.isCurrent());
+
+        // Refresh TOTP page
+        driver.navigate().refresh();
+
+        System.out.println(driver.getPageSource());
 
         loginTotpPage.login(totp.generateTOTP("totpSecret"));
 

@@ -31,6 +31,7 @@ import javax.ws.rs.core.Response;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 
 import static org.junit.Assert.*;
 
@@ -95,6 +96,26 @@ public class ComponentsTest extends AbstractAdminTest {
 
         assertEquals(1, returned.getConfig().size());
         assertTrue(returned.getConfig().containsKey("required"));
+    }
+
+    @Test
+    public void testCreateWithoutGivenId() {
+        ComponentRepresentation rep = createComponentRepresentation("mycomponent");
+        rep.getConfig().addFirst("required", "foo");
+        rep.setId(null);
+
+        String id = createComponent(rep);
+        assertNotNull(id);
+    }
+
+    @Test
+    public void testCreateWithGivenId() {
+        ComponentRepresentation rep = createComponentRepresentation("mycomponent");
+        rep.getConfig().addFirst("required", "foo");
+        rep.setId("fixed-id");
+
+        String id = createComponent(rep);
+        assertEquals("fixed-id", id);
     }
 
     @Test
@@ -208,6 +229,34 @@ public class ComponentsTest extends AbstractAdminTest {
 
         ComponentRepresentation returned3 = components.query().stream().filter(c -> c.getId().equals(returned2.getId())).findFirst().get();
         assertEquals(ComponentRepresentation.SECRET_VALUE, returned3.getConfig().getFirst("secret"));
+    }
+
+    @Test
+    public void testLongValueInComponentConfigAscii() throws Exception {
+        ComponentRepresentation rep = createComponentRepresentation("mycomponent");
+        String value = StringUtils.repeat("0123456789", 400);  // 4000 8-bit characters
+
+        rep.getConfig().addFirst("required", "foo");
+        rep.getConfig().addFirst("val1", value);
+
+        String id = createComponent(rep);
+
+        ComponentRepresentation returned = components.component(id).toRepresentation();
+        assertEquals(value, returned.getConfig().getFirst("val1"));
+    }
+
+    @Test
+    public void testLongValueInComponentConfigExtLatin() throws Exception {
+        ComponentRepresentation rep = createComponentRepresentation("mycomponent");
+        String value = StringUtils.repeat("ěščřžýíŮÍÁ", 400);  // 4000 Unicode extended-Latin characters
+
+        rep.getConfig().addFirst("required", "foo");
+        rep.getConfig().addFirst("val1", value);
+
+        String id = createComponent(rep);
+
+        ComponentRepresentation returned = components.component(id).toRepresentation();
+        assertEquals(value, returned.getConfig().getFirst("val1"));
     }
 
     private String createComponent(ComponentRepresentation rep) {

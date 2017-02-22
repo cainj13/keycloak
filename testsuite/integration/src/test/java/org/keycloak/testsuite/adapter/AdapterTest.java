@@ -19,6 +19,8 @@ package org.keycloak.testsuite.adapter;
 import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
+import org.keycloak.common.util.Encode;
+import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.services.managers.RealmManager;
@@ -70,6 +72,12 @@ public class AdapterTest {
                     .name("product-portal").contextPath("/product-portal")
                     .servletClass(ProductServlet.class).adapterConfigPath(url.getPath())
                     .role("user").deployApplication();
+           
+            url = getClass().getResource("/adapter-test/product-autodetect-bearer-only-keycloak.json");
+            createApplicationDeployment()
+                    .name("product-portal-autodetect-bearer-only").contextPath("/product-portal-autodetect-bearer-only")
+                    .servletClass(ProductServlet.class).adapterConfigPath(url.getPath())
+                    .role("user").deployApplication();
 
             // Test that replacing system properties works for adapters
             System.setProperty("app.server.base.url", "http://localhost:8081");
@@ -91,11 +99,36 @@ public class AdapterTest {
     @Rule
     public AdapterTestStrategy testStrategy = new AdapterTestStrategy("http://localhost:8081/auth", "http://localhost:8081", keycloakRule);
 
+    //@Test
+    public void testUi() throws Exception {
+        Thread.sleep(1000000000);
+    }
+
+    public static class MySuper {
+
+    }
+
+    public static class Base extends MySuper {
+        public Class superClass() {
+            return super.getClass();
+        }
+    }
+
+    @Test
+    public void testBase() {
+        System.out.println(new Base().superClass().getName());
+    }
+
     @Test
     public void testLoginSSOAndLogout() throws Exception {
         testStrategy.testLoginSSOMax();
 
         testStrategy.testLoginSSOAndLogout();
+    }
+
+    @Test
+    public void testLoginEncodedRedirectUri() throws Exception {
+        testStrategy.testLoginEncodedRedirectUri();
     }
 
     @Test
@@ -140,6 +173,11 @@ public class AdapterTest {
     @Test
     public void testNullBearerTokenCustomErrorPage() throws Exception {
         testStrategy.testNullBearerTokenCustomErrorPage();
+    }
+
+    @Test
+    public void testAutodetectBearerOnly() throws Exception {
+        testStrategy.testAutodetectBearerOnly();
     }
 
     @Test

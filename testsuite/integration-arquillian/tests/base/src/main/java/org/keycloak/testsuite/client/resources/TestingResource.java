@@ -18,6 +18,7 @@
 package org.keycloak.testsuite.client.resources;
 
 import org.jboss.resteasy.annotations.cache.NoCache;
+import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.representations.idm.AdminEventRepresentation;
 import org.keycloak.representations.idm.AuthenticationFlowRepresentation;
 import org.keycloak.representations.idm.EventRepresentation;
@@ -242,13 +243,19 @@ public interface TestingResource {
     Map<String, TestProvider.DetailsRepresentation> getTestComponentDetails();
 
     @GET
-    @Path("/smtp-config")
-    @Produces(MediaType.APPLICATION_JSON)
-    Map<String, String> getSmtpConfig();
-
-    @GET
     @Path("/identity-config")
     @Produces(MediaType.APPLICATION_JSON)
     Map<String, String> getIdentityProviderConfig(@QueryParam("alias") String alias);
+
+    @PUT
+    @Path("/set-krb5-conf-file")
+    @Consumes(MediaType.APPLICATION_JSON)
+    void setKrb5ConfFile(@QueryParam("krb5-conf-file") String krb5ConfFile);
+
+    @POST
+    @Path("/run-on-server")
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.TEXT_PLAIN)
+    String runOnServer(String runOnServer);
 
 }

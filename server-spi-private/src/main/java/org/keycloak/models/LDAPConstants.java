@@ -26,6 +26,7 @@ public class LDAPConstants {
 
     public static final String LDAP_PROVIDER = "ldap";
     public static final String MSAD_USER_ACCOUNT_CONTROL_MAPPER = "msad-user-account-control-mapper";
+    public static final String MSADLDS_USER_ACCOUNT_CONTROL_MAPPER = "msad-lds-user-account-control-mapper";
 
     public static final String VENDOR = "vendor";
     public static final String VENDOR_RHDS = "rhds";
@@ -56,6 +57,8 @@ public class LDAPConstants {
 
     public static final String SEARCH_SCOPE = "searchScope";
     public static final String CONNECTION_POOLING = "connectionPooling";
+    public static final String CONNECTION_TIMEOUT = "connectionTimeout";
+    public static final String READ_TIMEOUT = "readTimeout";
     public static final String PAGINATION = "pagination";
 
     public static final String EDIT_MODE = "editMode";
@@ -87,12 +90,16 @@ public class LDAPConstants {
     public static final String OBJECT_CLASS = "objectclass";
     public static final String UID = "uid";
     public static final String USER_PASSWORD_ATTRIBUTE = "userpassword";
+    public static final String JPEG_PHOTO = "jpegPhoto";
     public static final String GROUP = "group";
     public static final String GROUP_OF_NAMES = "groupOfNames";
     public static final String GROUP_OF_ENTRIES = "groupOfEntries";
     public static final String GROUP_OF_UNIQUE_NAMES = "groupOfUniqueNames";
     public static final String USER_ACCOUNT_CONTROL = "userAccountControl";
     public static final String PWD_LAST_SET = "pwdLastSet";
+    public static final String MSDS_USER_ACCOUNT_DISABLED = "msDS-UserAccountDisabled";
+    public static final String MSDS_USER_PASSWORD_NOTREQD = "msDS-UserPasswordNotRequired";
+    public static final String MSDS_USER_PASSWORD_EXPIRED = "msDS-UserPasswordExpired"; // read-only
 
     public static final String COMMA = ",";
     public static final String EQUAL = "=";

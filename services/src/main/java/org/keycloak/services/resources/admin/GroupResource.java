@@ -48,8 +48,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.keycloak.services.ErrorResponse;
 
 /**
+ * @resource Groups
  * @author Bill Burke
  */
 public class GroupResource {
@@ -138,6 +140,12 @@ public class GroupResource {
         if (group == null) {
             throw new NotFoundException("Could not find group by id");
         }
+        
+        for (GroupModel group : group.getSubGroups()) {
+            if (group.getName().equals(rep.getName())) {
+                return ErrorResponse.exists("Parent already contains subgroup named '" + rep.getName() + "'");
+            }
+        }
 
         Response.ResponseBuilder builder = Response.status(204);
         GroupModel child = null;
@@ -212,7 +220,7 @@ public class GroupResource {
             throw new NotFoundException("Could not find group by id");
         }
 
-        firstResult = firstResult != null ? firstResult : -1;
+        firstResult = firstResult != null ? firstResult : 0;
         maxResults = maxResults != null ? maxResults : Constants.DEFAULT_MAX_RESULTS;
 
         List<UserRepresentation> results = new ArrayList<UserRepresentation>();

@@ -20,11 +20,15 @@ package org.keycloak.storage.ldap;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.component.ComponentModel;
-import org.keycloak.models.LDAPConstants;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
 import org.keycloak.storage.ldap.idm.store.ldap.LDAPIdentityStore;
+import org.keycloak.storage.ldap.mappers.LDAPConfigDecorator;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -33,37 +37,50 @@ public class LDAPIdentityStoreRegistry {
 
     private static final Logger logger = Logger.getLogger(LDAPIdentityStoreRegistry.class);
 
-    private Map<String, LDAPIdentityStoreContext> ldapStores = new ConcurrentHashMap<String, LDAPIdentityStoreContext>();
+    private Map<String, LDAPIdentityStoreContext> ldapStores = new ConcurrentHashMap<>();
 
-    public LDAPIdentityStore getLdapStore(ComponentModel model) {
-        LDAPIdentityStoreContext context = ldapStores.get(model.getId());
+    public LDAPIdentityStore getLdapStore(KeycloakSession session, ComponentModel ldapModel, Map<ComponentModel, LDAPConfigDecorator> configDecorators) {
+        LDAPIdentityStoreContext context = ldapStores.get(ldapModel.getId());
 
         // Ldap config might have changed for the realm. In this case, we must re-initialize
-        MultivaluedHashMap<String, String> config = model.getConfig();
-        if (context == null || !config.equals(context.config)) {
-            logLDAPConfig(model.getName(), config);
+        MultivaluedHashMap<String, String> configModel = ldapModel.getConfig();
+        LDAPConfig ldapConfig = new LDAPConfig(configModel);
+        for (Map.Entry<ComponentModel, LDAPConfigDecorator> entry : configDecorators.entrySet()) {
+            ComponentModel mapperModel = entry.getKey();
+            LDAPConfigDecorator decorator = entry.getValue();
 
-            LDAPIdentityStore store = createLdapIdentityStore(config);
-            context = new LDAPIdentityStoreContext(config, store);
-            ldapStores.put(model.getId(), context);
+            decorator.updateLDAPConfig(ldapConfig, mapperModel);
+        }
+
+        if (context == null || !ldapConfig.equals(context.config)) {
+            logLDAPConfig(session, ldapModel, ldapConfig);
+
+            LDAPIdentityStore store = createLdapIdentityStore(ldapConfig);
+            context = new LDAPIdentityStoreContext(ldapConfig, store);
+            ldapStores.put(ldapModel.getId(), context);
         }
         return context.store;
     }
 
     // Don't log LDAP password
-    private void logLDAPConfig(String fedProviderDisplayName, MultivaluedHashMap<String, String> ldapConfig) {
-        MultivaluedHashMap<String, String> copy = new MultivaluedHashMap<String, String>(ldapConfig);
-        copy.remove(LDAPConstants.BIND_CREDENTIAL);
-        logger.infof("Creating new LDAP based partition manager for the Federation provider: " + fedProviderDisplayName + ", LDAP Configuration: " + copy);
+    private void logLDAPConfig(KeycloakSession session, ComponentModel ldapModel, LDAPConfig ldapConfig) {
+        logger.infof("Creating new LDAP Store for the LDAP storage provider: '%s', LDAP Configuration: %s", ldapModel.getName(), ldapConfig.toString());
+
+        if (logger.isDebugEnabled()) {
+            RealmModel realm = session.realms().getRealm(ldapModel.getParentId());
+            List<ComponentModel> mappers = realm.getComponents(ldapModel.getId());
+            mappers.stream().forEach((ComponentModel c) -> {
+
+                logger.debugf("Mapper for provider: %s, Mapper name: %s, Provider: %s, Mapper configuration: %s", ldapModel.getName(), c.getName(), c.getProviderId(), c.getConfig().toString());
+
+            });
+        }
     }
 
     /**
-     * @param ldapConfig from realm
-     * @return PartitionManager instance based on LDAP store
+     * Create LDAPIdentityStore to be cached in the local registry
      */
-    public static LDAPIdentityStore createLdapIdentityStore(MultivaluedHashMap<String, String> ldapConfig) {
-        LDAPConfig cfg = new LDAPConfig(ldapConfig);
-
+    public static LDAPIdentityStore createLdapIdentityStore(LDAPConfig cfg) {
         checkSystemProperty("com.sun.jndi.ldap.connect.pool.authentication", "none simple");
         checkSystemProperty("com.sun.jndi.ldap.connect.pool.initsize", "1");
         checkSystemProperty("com.sun.jndi.ldap.connect.pool.maxsize", "1000");
@@ -84,12 +101,12 @@ public class LDAPIdentityStoreRegistry {
 
     private class LDAPIdentityStoreContext {
 
-        private LDAPIdentityStoreContext(MultivaluedHashMap<String, String> config, LDAPIdentityStore store) {
+        private LDAPIdentityStoreContext(LDAPConfig config, LDAPIdentityStore store) {
             this.config = config;
             this.store = store;
         }
 
-        private MultivaluedHashMap<String, String> config;
+        private LDAPConfig config;
         private LDAPIdentityStore store;
     }
 }

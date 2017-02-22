@@ -23,6 +23,7 @@ import org.jboss.resteasy.spi.NotFoundException;
 import org.jboss.resteasy.spi.ResteasyProviderFactory;
 import org.keycloak.authentication.RequiredActionProvider;
 import org.keycloak.common.ClientConnection;
+import org.keycloak.common.Profile;
 import org.keycloak.common.util.Time;
 import org.keycloak.credential.CredentialModel;
 import org.keycloak.email.EmailException;
@@ -41,13 +42,13 @@ import org.keycloak.models.IdentityProviderModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ModelDuplicateException;
 import org.keycloak.models.ModelException;
-import org.keycloak.models.ModelReadOnlyException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserConsentModel;
 import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserLoginFailureModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
+import org.keycloak.models.credential.PasswordUserCredentialModel;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
@@ -70,6 +71,8 @@ import org.keycloak.models.UserManager;
 import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.resources.AccountService;
 import org.keycloak.services.validation.Validation;
+import org.keycloak.storage.ReadOnlyException;
+import org.keycloak.utils.ProfileHelper;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -104,6 +107,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Base resource for managing users
  *
+ * @resource Users
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
@@ -179,11 +183,13 @@ public class UsersResource {
             return Response.noContent().build();
         } catch (ModelDuplicateException e) {
             return ErrorResponse.exists("User exists with same username or email");
-        } catch (ModelReadOnlyException re) {
+        } catch (ReadOnlyException re) {
             return ErrorResponse.exists("User is read only!");
         } catch (ModelException me) {
+            logger.warn("Could not update user!", me);
             return ErrorResponse.exists("Could not update user!");
-        } catch (Exception me) { // JPA may be committed by JTA which can't 
+        } catch (Exception me) { // JPA
+            logger.warn("Could not update user!", me);// may be committed by JTA which can't
             return ErrorResponse.exists("Could not update user!");
         }
     }
@@ -206,7 +212,7 @@ public class UsersResource {
         if (session.users().getUserByUsername(rep.getUsername(), realm) != null) {
             return ErrorResponse.exists("User exists with same username");
         }
-        if (rep.getEmail() != null && session.users().getUserByEmail(rep.getEmail(), realm) != null) {
+        if (rep.getEmail() != null && !realm.isDuplicateEmailsAllowed() && session.users().getUserByEmail(rep.getEmail(), realm) != null) {
             return ErrorResponse.exists("User exists with same email");
         }
 
@@ -231,6 +237,7 @@ public class UsersResource {
             if (session.getTransactionManager().isActive()) {
                 session.getTransactionManager().setRollbackOnly();
             }
+            logger.warn("Could not create user", me);
             return ErrorResponse.exists("Could not create user");
         }
     }
@@ -316,6 +323,8 @@ public class UsersResource {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> impersonate(final @PathParam("id") String id) {
+        ProfileHelper.requireFeature(Profile.Feature.IMPERSONATION);
+
         auth.init(RealmAuth.Resource.IMPERSONATION);
         auth.requireManage();
 
@@ -769,12 +778,12 @@ public class UsersResource {
             throw new BadRequestException("Empty password not allowed");
         }
 
-        UserCredentialModel cred = RepresentationToModel.convertCredential(pass);
+        UserCredentialModel cred = UserCredentialModel.password(pass.getValue(), true);
         try {
             session.userCredentialManager().updateCredential(realm, user, cred);
         } catch (IllegalStateException ise) {
             throw new BadRequestException("Resetting to N old passwords is not allowed.");
-        } catch (ModelReadOnlyException mre) {
+        } catch (ReadOnlyException mre) {
             throw new BadRequestException("Can't reset password as account is read only");
         } catch (ModelException e) {
             Properties messages = AdminRoot.getMessages(session, realm, auth.getAuth().getToken().getLocale());
@@ -836,8 +845,9 @@ public class UsersResource {
      * Send a update account email to the user
      *
      * An email contains a link the user can click to perform a set of required actions.
-     * The redirectUri and clientId parameters are optional. The default for the
-     * redirect is the account client.
+     * The redirectUri and clientId parameters are optional. If no redirect is given, then there will
+     * be no link back to click after actions have completed.  Redirect uri must be a valid uri for the
+     * particular clientId.
      *
      * @param id User is
      * @param redirectUri Redirect uri
@@ -866,6 +876,10 @@ public class UsersResource {
         ClientSessionModel clientSession = createClientSession(user, redirectUri, clientId);
         for (String action : actions) {
             clientSession.addRequiredAction(action);
+        }
+        if (redirectUri != null) {
+            clientSession.setNote(AuthenticationManager.SET_REDIRECT_URI_AFTER_REQUIRED_ACTIONS, "true");
+
         }
         ClientSessionCode accessCode = new ClientSessionCode(session, realm, clientSession);
         accessCode.setAction(ClientSessionModel.Action.EXECUTE_ACTIONS.name());
@@ -933,15 +947,13 @@ public class UsersResource {
                 ErrorResponse.error(clientId + " not enabled", Response.Status.BAD_REQUEST));
         }
 
-        String redirect;
+        String redirect = null;
         if (redirectUri != null) {
             redirect = RedirectUtils.verifyRedirectUri(uriInfo, redirectUri, realm, client);
             if (redirect == null) {
                 throw new WebApplicationException(
                     ErrorResponse.error("Invalid redirect uri.", Response.Status.BAD_REQUEST));
             }
-        } else {
-            redirect = Urls.accountBase(uriInfo.getBaseUri()).path("/").build(realm.getName()).toString();
         }
 
 

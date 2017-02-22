@@ -38,6 +38,7 @@ import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
+import org.keycloak.models.ModelException;
 import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleModel;
@@ -65,6 +66,8 @@ import org.keycloak.common.util.Time;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
+
+import java.security.PublicKey;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -130,15 +133,24 @@ public class TokenManager {
         if (TokenUtil.TOKEN_TYPE_OFFLINE.equals(oldToken.getType())) {
 
             UserSessionManager sessionManager = new UserSessionManager(session);
-            clientSession = sessionManager.findOfflineClientSession(realm, oldToken.getClientSession(), oldToken.getSessionState());
+            clientSession = sessionManager.findOfflineClientSession(realm, oldToken.getClientSession());
             if (clientSession != null) {
                 userSession = clientSession.getUserSession();
+
+                if (userSession == null) {
+                    throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Offline user session not found", "Offline user session not found");
+                }
+
+                String userSessionId = oldToken.getSessionState();
+                if (!userSessionId.equals(userSession.getId())) {
+                    throw new ModelException("User session don't match. Offline client session " + clientSession.getId() + ", It's user session " + userSession.getId() +
+                            "  Wanted user session: " + userSessionId);
+                }
 
                 // Revoke timeouted offline userSession
                 if (userSession.getLastSessionRefresh() < Time.currentTime() - realm.getOfflineSessionIdleTimeout()) {
                     sessionManager.revokeOfflineUserSession(userSession);
-                    userSession = null;
-                    clientSession = null;
+                    throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Offline user session not active", "Offline user session session not active");
                 }
             }
         } else {
@@ -277,7 +289,17 @@ public class TokenManager {
     public RefreshToken toRefreshToken(KeycloakSession session, RealmModel realm, String encodedRefreshToken) throws JWSInputException, OAuthErrorException {
         JWSInput jws = new JWSInput(encodedRefreshToken);
 
-        if (!RSAProvider.verify(jws, session.keys().getPublicKey(realm, jws.getHeader().getKeyId()))) {
+        PublicKey publicKey;
+
+        // Backwards compatibility. Old offline tokens didn't have KID in the header
+        if (jws.getHeader().getKeyId() == null && TokenUtil.isOfflineToken(encodedRefreshToken)) {
+            logger.debugf("KID is null in offline token. Using the realm active key to verify token signature.");
+            publicKey = session.keys().getActiveRsaKey(realm).getPublicKey();
+        } else {
+            publicKey = session.keys().getRsaPublicKey(realm, jws.getHeader().getKeyId());
+        }
+
+        if (!RSAProvider.verify(jws, publicKey)) {
             throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Invalid refresh token");
         }
 
@@ -288,7 +310,7 @@ public class TokenManager {
         try {
             JWSInput jws = new JWSInput(encodedIDToken);
             IDToken idToken;
-            if (!RSAProvider.verify(jws, session.keys().getPublicKey(realm, jws.getHeader().getKeyId()))) {
+            if (!RSAProvider.verify(jws, session.keys().getRsaPublicKey(realm, jws.getHeader().getKeyId()))) {
                 throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Invalid IDToken");
             }
             idToken = jws.readJsonContent(IDToken.class);
@@ -300,6 +322,21 @@ public class TokenManager {
             if (idToken.getIssuedAt() < realm.getNotBefore()) {
                 throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Stale IDToken");
             }
+            return idToken;
+        } catch (JWSInputException e) {
+            throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Invalid IDToken", e);
+        }
+    }
+
+    public IDToken verifyIDTokenSignature(KeycloakSession session, RealmModel realm, String encodedIDToken) throws OAuthErrorException {
+        try {
+            JWSInput jws = new JWSInput(encodedIDToken);
+            IDToken idToken;
+            if (!RSAProvider.verify(jws, session.keys().getRsaPublicKey(realm, jws.getHeader().getKeyId()))) {
+                throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Invalid IDToken");
+            }
+            idToken = jws.readJsonContent(IDToken.class);
+
             return idToken;
         } catch (JWSInputException e) {
             throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Invalid IDToken", e);
@@ -616,8 +653,8 @@ public class TokenManager {
     }
 
     public String encodeToken(KeycloakSession session, RealmModel realm, Object token) {
-        KeyManager.ActiveKey activeKey = session.keys().getActiveKey(realm);
-        return new JWSBuilder().type(JWT).kid(activeKey.getKid()).jsonContent(token).sign(jwsAlgorithm, activeKey.getPrivateKey());
+        KeyManager.ActiveRsaKey activeRsaKey = session.keys().getActiveRsaKey(realm);
+        return new JWSBuilder().type(JWT).kid(activeRsaKey.getKid()).jsonContent(token).sign(jwsAlgorithm, activeRsaKey.getPrivateKey());
     }
 
     public AccessTokenResponseBuilder responseBuilder(RealmModel realm, ClientModel client, EventBuilder event, KeycloakSession session, UserSessionModel userSession, ClientSessionModel clientSession) {
@@ -724,7 +761,7 @@ public class TokenManager {
 
 
         public AccessTokenResponse build() {
-            KeyManager.ActiveKey activeKey = session.keys().getActiveKey(realm);
+            KeyManager.ActiveRsaKey activeRsaKey = session.keys().getActiveRsaKey(realm);
 
             if (accessToken != null) {
                 event.detail(Details.TOKEN_ID, accessToken.getId());
@@ -741,7 +778,7 @@ public class TokenManager {
 
             AccessTokenResponse res = new AccessTokenResponse();
             if (accessToken != null) {
-                String encodedToken = new JWSBuilder().type(JWT).kid(activeKey.getKid()).jsonContent(accessToken).sign(jwsAlgorithm, activeKey.getPrivateKey());
+                String encodedToken = new JWSBuilder().type(JWT).kid(activeRsaKey.getKid()).jsonContent(accessToken).sign(jwsAlgorithm, activeRsaKey.getPrivateKey());
                 res.setToken(encodedToken);
                 res.setTokenType("bearer");
                 res.setSessionState(accessToken.getSessionState());
@@ -759,11 +796,11 @@ public class TokenManager {
             }
 
             if (idToken != null) {
-                String encodedToken = new JWSBuilder().type(JWT).kid(activeKey.getKid()).jsonContent(idToken).sign(jwsAlgorithm, activeKey.getPrivateKey());
+                String encodedToken = new JWSBuilder().type(JWT).kid(activeRsaKey.getKid()).jsonContent(idToken).sign(jwsAlgorithm, activeRsaKey.getPrivateKey());
                 res.setIdToken(encodedToken);
             }
             if (refreshToken != null) {
-                String encodedToken = new JWSBuilder().type(JWT).kid(activeKey.getKid()).jsonContent(refreshToken).sign(jwsAlgorithm, activeKey.getPrivateKey());
+                String encodedToken = new JWSBuilder().type(JWT).kid(activeRsaKey.getKid()).jsonContent(refreshToken).sign(jwsAlgorithm, activeRsaKey.getPrivateKey());
                 res.setRefreshToken(encodedToken);
                 if (refreshToken.getExpiration() != 0) {
                     res.setRefreshExpiresIn(refreshToken.getExpiration() - Time.currentTime());

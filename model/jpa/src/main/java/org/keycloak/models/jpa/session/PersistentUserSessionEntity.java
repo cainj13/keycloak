@@ -17,6 +17,8 @@
 
 package org.keycloak.models.jpa.session;
 
+import org.keycloak.storage.jpa.KeyUtils;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -50,7 +52,7 @@ public class PersistentUserSessionEntity {
     @Column(name = "REALM_ID", length = 36)
     protected String realmId;
 
-    @Column(name="USER_ID", length = 36)
+    @Column(name="USER_ID", length = 255)
     protected String userId;
 
     @Column(name = "LAST_SESSION_REFRESH")
@@ -84,6 +86,7 @@ public class PersistentUserSessionEntity {
     }
 
     public void setUserId(String userId) {
+        KeyUtils.assertValidKey(userId);
         this.userId = userId;
     }
 

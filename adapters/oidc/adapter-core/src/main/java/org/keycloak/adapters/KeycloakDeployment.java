@@ -57,6 +57,7 @@ public class KeycloakDeployment {
 
     protected String resourceName;
     protected boolean bearerOnly;
+    protected boolean autodetectBearerOnly;
     protected boolean enableBasicAuth;
     protected boolean publicClient;
     protected Map<String, Object> resourceCredentials = new HashMap<>();
@@ -81,6 +82,7 @@ public class KeycloakDeployment {
     protected volatile int notBefore;
     protected int tokenMinimumTimeToLive;
     protected int minTimeBetweenJwksRequests;
+    protected int publicKeyCacheTtl;
     private PolicyEnforcer policyEnforcer;
 
     public KeycloakDeployment() {
@@ -198,6 +200,14 @@ public class KeycloakDeployment {
 
     public void setBearerOnly(boolean bearerOnly) {
         this.bearerOnly = bearerOnly;
+    }
+
+    public boolean isAutodetectBearerOnly() {
+        return autodetectBearerOnly;
+    }
+
+    public void setAutodetectBearerOnly(boolean autodetectBearerOnly) {
+        this.autodetectBearerOnly = autodetectBearerOnly;
     }
 
     public boolean isEnableBasicAuth() {
@@ -328,6 +338,11 @@ public class KeycloakDeployment {
         this.notBefore = notBefore;
     }
 
+    public void updateNotBefore(int notBefore) {
+        this.notBefore = notBefore;
+        getPublicKeyLocator().reset(this);
+    }
+
     public boolean isAlwaysRefreshToken() {
         return alwaysRefreshToken;
     }
@@ -382,6 +397,14 @@ public class KeycloakDeployment {
 
     public void setMinTimeBetweenJwksRequests(int minTimeBetweenJwksRequests) {
         this.minTimeBetweenJwksRequests = minTimeBetweenJwksRequests;
+    }
+
+    public int getPublicKeyCacheTtl() {
+        return publicKeyCacheTtl;
+    }
+
+    public void setPublicKeyCacheTtl(int publicKeyCacheTtl) {
+        this.publicKeyCacheTtl = publicKeyCacheTtl;
     }
 
     public void setPolicyEnforcer(PolicyEnforcer policyEnforcer) {

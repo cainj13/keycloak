@@ -37,6 +37,7 @@ import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.RequiredActionProviderModel;
+import org.keycloak.models.utils.DefaultAuthenticationFlows;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -72,6 +73,7 @@ import java.util.Map;
 import static javax.ws.rs.core.Response.Status.NOT_FOUND;
 
 /**
+ * @resource Authentication Management
  * @author Bill Burke
  */
 public class AuthenticationManagementResource {
@@ -186,7 +188,8 @@ public class AuthenticationManagementResource {
 
         List<AuthenticationFlowRepresentation> flows = new LinkedList<>();
         for (AuthenticationFlowModel flow : realm.getAuthenticationFlows()) {
-            if (flow.isTopLevel()) {
+            // KEYCLOAK-3517, we need a better way to filter non-configurable internal flows
+            if (flow.isTopLevel() && !flow.getAlias().equals(DefaultAuthenticationFlows.SAML_ECP_FLOW)) {
                 flows.add(ModelToRepresentation.toRepresentation(realm, flow));
             }
         }
@@ -986,6 +989,7 @@ public class AuthenticationManagementResource {
     @Path("config")
     @POST
     @NoCache
+    @Consumes(MediaType.APPLICATION_JSON)
     public Response createAuthenticatorConfig(AuthenticatorConfigRepresentation rep) {
         auth.requireManage();
 

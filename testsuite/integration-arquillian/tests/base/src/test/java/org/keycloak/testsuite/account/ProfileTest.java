@@ -23,11 +23,14 @@ import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.jboss.arquillian.drone.api.annotation.Default;
+import org.jboss.arquillian.graphene.context.GrapheneContext;
 import org.jboss.arquillian.graphene.page.Page;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.resource.ClientResource;
+import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.RoleMappingResource;
 import org.keycloak.admin.client.resource.RoleScopeResource;
 import org.keycloak.models.AccountRoles;
@@ -35,17 +38,27 @@ import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.services.resources.RealmsResource;
-import org.keycloak.testsuite.TestRealmKeycloakTest;
+import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.admin.ApiUtil;
+import org.keycloak.testsuite.client.resources.TestApplicationResource;
 import org.keycloak.testsuite.pages.AccountApplicationsPage;
 import org.keycloak.testsuite.pages.AccountUpdateProfilePage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.pages.OAuthGrantPage;
 import org.keycloak.testsuite.util.ClientBuilder;
+import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.RealmBuilder;
 import org.keycloak.testsuite.util.RealmRepUtil;
 import org.keycloak.testsuite.util.UserBuilder;
+import org.keycloak.testsuite.util.WaitUtils;
+import org.openqa.selenium.By;
+import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Platform;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebDriverException;
+import org.openqa.selenium.htmlunit.HtmlUnitDriver;
+import org.openqa.selenium.remote.DesiredCapabilities;
 import twitter4j.JSONArray;
 import twitter4j.JSONObject;
 
@@ -54,9 +67,7 @@ import javax.ws.rs.core.UriBuilder;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -65,7 +76,7 @@ import static org.junit.Assert.fail;
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
-public class ProfileTest extends TestRealmKeycloakTest {
+public class ProfileTest extends AbstractTestRealmKeycloakTest {
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
@@ -81,6 +92,7 @@ public class ProfileTest extends TestRealmKeycloakTest {
                                               .password("password")
                                               .build();
         RealmBuilder.edit(testRealm)
+                .accessTokenLifespan(1000)
                     .user(user2);
 
         ClientBuilder.edit(RealmRepUtil.findClientByClientId(testRealm, "test-app"))
@@ -157,12 +169,15 @@ public class ProfileTest extends TestRealmKeycloakTest {
         String code = oauth.getCurrentQuery().get(OAuth2Constants.CODE);
         String token = oauth.doAccessTokenRequest(code, "password").getAccessToken();
 
-        driver.navigate().to("http://localtest.me:8180/app");
+        driver.navigate().to("http://localtest.me:8180/auth/realms/test/account");
 
-        String[] response = doGetProfileJs(token);
+        String[] response = doGetProfileJs("http://localtest.me:8180/auth", token);
         assertEquals("200", response[0]);
     }
 
+
+    // WARN: If it's failing for phantomJS, make sure to enable CORS by using:
+    // -Dphantomjs.cli.args="--ignore-ssl-errors=true --web-security=true"
     @Test
     public void getProfileCorsInvalidOrigin() throws Exception {
         oauth.doLogin("test-user@localhost", "password");
@@ -170,12 +185,16 @@ public class ProfileTest extends TestRealmKeycloakTest {
         String code = oauth.getCurrentQuery().get(OAuth2Constants.CODE);
         String token = oauth.doAccessTokenRequest(code, "password").getAccessToken();
 
-        driver.navigate().to("http://invalid.localtest.me:8180");
-
+        String[] response = null;
         try {
-            doGetProfileJs(token);
-            fail("Expected failure");
-        } catch (Throwable t) {
+            response = doGetProfileJs("http://invalid.localtest.me:8180/auth", token);
+        } catch (WebDriverException ex) {
+            // Expected
+        }
+
+        // Some webDrivers throw exception (htmlUnit) , some just doesn't return anything.
+        if (response != null && response.length > 0 && response[0].equals("200")) {
+            fail("Not expected to retrieve response. Make sure CORS are enabled for your browser!");
         }
     }
 
@@ -184,7 +203,7 @@ public class ProfileTest extends TestRealmKeycloakTest {
         profilePage.open();
         loginPage.login("test-user@localhost", "password");
 
-        String[] response = doGetProfileJs(null);
+        String[] response = doGetProfileJs(OAuthClient.AUTH_SERVER_ROOT, null);
         assertEquals("200", response[0]);
 
         JSONObject profile = new JSONObject(response[1]);
@@ -255,19 +274,36 @@ public class ProfileTest extends TestRealmKeycloakTest {
         return client.execute(get);
     }
 
-    private String[] doGetProfileJs(String token) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("var req = new XMLHttpRequest();\n");
-        sb.append("req.open('GET', '" + getAccountURI().toString() + "', false);\n");
-        if (token != null) {
-            sb.append("req.setRequestHeader('Authorization', 'Bearer " + token + "');\n");
-        }
-        sb.append("req.setRequestHeader('Accept', 'application/json');\n");
-        sb.append("req.send(null);\n");
-        sb.append("return req.status + '///' + req.responseText;\n");
+    private String[] doGetProfileJs(String authServerRoot, String token) {
+        UriBuilder uriBuilder = UriBuilder.fromUri(authServerRoot)
+                .path(TestApplicationResource.class)
+                .path(TestApplicationResource.class, "getAccountProfile")
+                .queryParam("account-uri", getAccountURI().toString());
 
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        String response = (String) js.executeScript(sb.toString());
+        if (token != null) {
+            uriBuilder.queryParam("token", token);
+
+            // Remove Keycloak cookies. Some browsers send cookies even in preflight requests
+            driver.navigate().to(OAuthClient.AUTH_SERVER_ROOT + "/realms/test/account");
+            driver.manage().deleteAllCookies();
+        }
+
+        String accountProfileUri = uriBuilder.build().toString();
+        log.info("Retrieve profile with URI: " + accountProfileUri);
+
+        driver.navigate().to(accountProfileUri);
+        WaitUtils.waitUntilElement(By.id("innerOutput"));
+        String response = driver.findElement(By.id("innerOutput")).getText();
         return response.split("///");
+    }
+
+    private WebDriver getHtmlUnitDriver() {
+        DesiredCapabilities cap = new DesiredCapabilities();
+        cap.setPlatform(Platform.ANY);
+        cap.setJavascriptEnabled(true);
+        cap.setVersion("chrome");
+        cap.setBrowserName("htmlunit");
+        HtmlUnitDriver driver = new HtmlUnitDriver(cap);
+        return driver;
     }
 }

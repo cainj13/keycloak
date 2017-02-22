@@ -271,7 +271,7 @@ public class PermissionsTest extends AbstractKeycloakTest {
 
         invoke(new InvocationWithResponse() {
             public void invoke(RealmResource realm, AtomicReference<Response> response) {
-                response.set(realm.testLDAPConnection("nosuch", "nosuch", "nosuch", "nosuch", "nosuch"));
+                response.set(realm.testLDAPConnection("nosuch", "nosuch", "nosuch", "nosuch", "nosuch", "nosuch"));
             }
         }, Resource.REALM, true);
 
@@ -1173,7 +1173,9 @@ public class PermissionsTest extends AbstractKeycloakTest {
         }, Resource.USER, false);
         invoke(new InvocationWithResponse() {
             public void invoke(RealmResource realm, AtomicReference<Response> response) {
-                response.set(realm.groups().add(new GroupRepresentation()));
+                GroupRepresentation group = new GroupRepresentation();
+                group.setName("mygroup");
+                response.set(realm.groups().add(group));
             }
         }, Resource.USER, true);
 

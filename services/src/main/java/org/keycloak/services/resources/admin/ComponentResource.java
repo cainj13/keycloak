@@ -65,6 +65,7 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
+ * @resource Component
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
@@ -100,7 +101,9 @@ public class ComponentResource {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @NoCache
-    public List<ComponentRepresentation> getComponents(@QueryParam("parent") String parent, @QueryParam("type") String type) {
+    public List<ComponentRepresentation> getComponents(@QueryParam("parent") String parent,
+                                                       @QueryParam("type") String type,
+                                                       @QueryParam("name") String name) {
         auth.requireView();
         List<ComponentModel> components = Collections.EMPTY_LIST;
         if (parent == null && type == null) {
@@ -115,7 +118,14 @@ public class ComponentResource {
         }
         List<ComponentRepresentation> reps = new LinkedList<>();
         for (ComponentModel component : components) {
-            ComponentRepresentation rep = ModelToRepresentation.toRepresentation(session, component, false);
+            if (name != null && !name.equals(component.getName())) continue;
+            ComponentRepresentation rep = null;
+            try {
+                rep = ModelToRepresentation.toRepresentation(session, component, false);
+            } catch (Exception e) {
+                logger.error("Failed to get component list for component model" + component.getName() + "of realm " + realm.getName());
+                rep = ModelToRepresentation.toRepresentationWithoutConfig(component);
+            }
             reps.add(rep);
         }
         return reps;
