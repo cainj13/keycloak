@@ -88,6 +88,14 @@ public class QuickstartInstallationTest {
     }
 
     @Test
+    public void shouldIncludeReadmeInZip() throws Exception {
+        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
+        final Optional<String> dockerComposeFileContents = getFileContents(zipInput, QUICKSTART_ROOT_DIR + "README.md");
+
+        assertThat("Could not find README.md file in zip archive response", dockerComposeFileContents.isPresent(), equalTo(true));
+    }
+
+    @Test
     public void shouldWriteBlankDataDirectoryInZip() throws Exception {
         final ZipInputStream zipInput = getZipResponseFromInstallProvider();
 

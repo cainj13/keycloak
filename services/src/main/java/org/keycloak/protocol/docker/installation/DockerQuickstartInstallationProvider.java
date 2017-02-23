@@ -1,5 +1,6 @@
 package org.keycloak.protocol.docker.installation;
 
+import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
@@ -13,12 +14,17 @@ import javax.ws.rs.core.Response;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.cert.Certificate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class DockerQuickstartInstallationProvider implements ClientInstallationProvider {
+    private static Logger log = Logger.getLogger(DockerQuickstartInstallationProvider.class);
+
     public static final String QUICKSTART_ROOT_DIR = "docker-registry-quickstart/";
 
     @Override
@@ -98,6 +104,16 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
         zipOutput.putNextEntry(new ZipEntry(certsDirectory + zipContent.getCertsDirectory().getIdpTrustChainFile().getKey()));
         zipOutput.write(zipContent.getCertsDirectory().getIdpTrustChainFile().getValue());
         zipOutput.closeEntry();
+
+        // Write README to .zip
+//        try {
+//            final Path path = Paths.get(ClassLoader.getSystemResource("DockerQuickstartReadme.md").toString());
+            zipOutput.putNextEntry(new ZipEntry(QUICKSTART_ROOT_DIR + "README.md"));
+            zipOutput.write(DockerQuickstartInstallationProvider.class.getResourceAsStream("/DockerQuickstartReadme.md").toString().getBytes());
+            zipOutput.closeEntry();
+//        } catch (URISyntaxException e) {
+//            log.warn("Could not find Docker Quickstart Readme file with classloader.  Zip archive will omit README instructions", e);
+//        }
 
         zipOutput.close();
         byteStream.close();
