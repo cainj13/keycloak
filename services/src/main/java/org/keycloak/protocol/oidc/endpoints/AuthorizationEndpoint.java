@@ -150,20 +150,6 @@ public class AuthorizationEndpoint extends AuthorizationEndpointBase {
         return this;
     }
 
-    private void checkSsl() {
-        if (!uriInfo.getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
-            event.error(Errors.SSL_REQUIRED);
-            throw new ErrorPageException(session, Messages.HTTPS_REQUIRED);
-        }
-    }
-
-    private void checkRealm() {
-        if (!realm.isEnabled()) {
-            event.error(Errors.REALM_DISABLED);
-            throw new ErrorPageException(session, Messages.REALM_NOT_ENABLED);
-        }
-    }
-
     private void checkClient(String clientId) {
         if (clientId == null) {
             event.error(Errors.INVALID_REQUEST);

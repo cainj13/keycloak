@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -54,7 +53,7 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
 
         try {
             // TODO if this works, also change other providers to use this instead of the base url and adding 'auth'
-            return generateInstallation(zipOutput, byteStream, session.keys().getActiveKey(realm).getCertificate(), session.getContext().getAuthServerUrl().toURL(), realm.getName(), client.getClientId());
+            return generateInstallation(zipOutput, byteStream, session.keys().getActiveRsaKey(realm).getCertificate(), session.getContext().getAuthServerUrl().toURL(), realm.getName(), client.getClientId());
         } catch (final IOException e) {
             try {
                 zipOutput.close();

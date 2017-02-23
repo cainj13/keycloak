@@ -122,7 +122,7 @@ public class DockerAuthV2Protocol implements LoginProtocol {
         try {
             // Finally, construct the response to the docker client with the token + metadata
             if (event.getEvent() != null && EventType.LOGIN.equals(event.getEvent().getType())) {
-                final KeyManager.ActiveKey activeKey = session.keys().getActiveKey(realm);
+                final KeyManager.ActiveRsaKey activeKey = session.keys().getActiveRsaKey(realm);
                 final String encodedToken = new JWSBuilder()
                         .kid(new DockerKeyIdentifier(activeKey.getPublicKey()).toString())
                         .type("JWT")
