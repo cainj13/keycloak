@@ -43,8 +43,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.Assert.*;
 import static org.keycloak.testsuite.auth.page.AuthRealm.EXAMPLE;
 import static org.keycloak.testsuite.util.IOUtil.loadRealm;
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlDoesntStartWith;
@@ -454,6 +454,18 @@ public abstract class AbstractJSConsoleExampleAdapterTest extends AbstractExampl
                 .contains("location: " + authServerContextRootPage.toString() + "/auth/admin/realms/" + EXAMPLE + "/users/" + users.get(0).getId());
     }
 
+    @Test
+    public void reentrancyCallbackTest() {
+        logInAndInit("standard");
+
+        jsConsoleTestAppPage.callReentrancyCallback();
+
+        waitUntilElement(jsConsoleTestAppPage.getEventsElement()).text().contains("First callback");
+        waitUntilElement(jsConsoleTestAppPage.getEventsElement()).text().contains("Second callback");
+
+        waitUntilElement(jsConsoleTestAppPage.getEventsElement()).text().not().contains("Auth Logout");
+    }
+
     private void setImplicitFlowForClient() {
         ClientResource clientResource = ApiUtil.findClientResourceByClientId(testRealmResource(), "js-console");
         ClientRepresentation client = clientResource.toRepresentation();
@@ -479,7 +491,7 @@ public abstract class AbstractJSConsoleExampleAdapterTest extends AbstractExampl
 
     private void assertResponseError(String errorDescription) {
         jsConsoleTestAppPage.showErrorResponse();
-        assertTrue(jsConsoleTestAppPage.getOutputElement().getText().contains(errorDescription));
+        assertThat(jsConsoleTestAppPage.getOutputElement().getText(), containsString(errorDescription));
     }
 
 }

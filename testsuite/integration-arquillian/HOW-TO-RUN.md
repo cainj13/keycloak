@@ -21,8 +21,10 @@ Adding this system property when running any test:
     
     -Darquillian.debug=true
     
-will add lots of info to the log. Especially about all the triggered arquillian lifecycle events and executed observers listening to those events.
-Also the bootstrap of WebDriver will be unlimited (by default there is 1 minute timeout and test is cancelled when WebDriver is not bootstrapped within it.)
+will add lots of info to the log. Especially about:
+* The test method names, which will be executed for each test class, will be written at the proper running order to the log at the beginning of each test (done by KcArquillian class). 
+* All the triggered arquillian lifecycle events and executed observers listening to those events will be written to the log
+* The bootstrap of WebDriver will be unlimited. By default there is just 1 minute timeout and test is cancelled when WebDriver is not bootstrapped within it.
 
 ### WebDriver timeout
 
@@ -41,10 +43,21 @@ and adapter are all in the same JVM and you can debug them easily. If it is not 
     -Dmaven.surefire.debug=true
    
    
-and you will be able to attach remote debugger to the test. Unfortunately server and adapter are running in different JVMs, so you won't be able to debug them. 
+and you will be able to attach remote debugger to the test. Unfortunately server and adapter are running in different JVMs, so this won't help to debug those. 
 
 TODO: Improve and add more info about Wildfly debugging...
 
+## Testsuite logging
+
+It is configured in `testsuite/integration-arquillian/tests/base/src/test/resources/log4j.properties` . You can see that logging of testsuite itself (category `org.keycloak.testsuite`) is debug by default.
+
+When you run tests with undertow (which is by default), there is logging for Keycloak server and adapter (category `org.keycloak` ) in `info` when you run tests from IDE, but `off` when 
+you run tests with maven. The reason is that, we don't want huge logs when running mvn build. However using system property `keycloak.logging.level` will override it. This can be used for both IDE or maven.
+So for example using `-Dkeycloak.logging.level=debug` will enable debug logging for keycloak server and adapter. 
+
+For more fine-tuning of individual categories, you can look at log4j.properties file and temporarily enable/disable them here.
+
+TODO: Add info about Wildfly logging
 
 ## Run adapter tests
 
@@ -192,6 +205,38 @@ This will start latest Keycloak and import the realm JSON file, which was previo
       -Dmigrated.auth.server.version=1.9.8.Final
 
 
+## UI tests
+The UI tests are real-life, UI focused integration tests. Hence they do not support the default HtmlUnit browser. Only the following real-life browsers are supported: Mozilla Firefox, Google Chrome and Internet Explorer. For details on how to run the tests with these browsers, please refer to [Different Browsers](#different-browsers) chapter.
+
+The UI tests are focused on the Admin Console as well as on some login scenarios. They are placed in the `console` module and are disabled by default.
+
+The tests also use some constants placed in [test-constants.properties](tests/base/src/test/resources/test-constants.properties). A different file can be specified by `-Dtestsuite.constants=path/to/different-test-constants.properties`
+
+#### Execution example
+```
+mvn -f testsuite/integration-arquillian/tests/other/console/pom.xml \
+    clean test \
+    -Dbrowser=firefox \
+    -Dfirefox_binary=/opt/firefox-45.1.1esr/firefox
+```
+
+## Welcome Page tests
+The Welcome Page tests need to be run on WildFly/EAP and with `-Dskip.add.user.json` switch. So that they are disabled by default and are meant to be run separately.
+
+```
+# Prepare servers
+mvn -f testsuite/integration-arquillian/servers/pom.xml \
+    clean install \
+    -Pauth-server-wildfly \
+    -Papp-server-wildfly
+
+# Run tests
+mvn -f testsuite/integration-arquillian/tests/base/pom.xml \
+    clean test \
+    -Dtest=WelcomePageTest \
+    -Dskip.add.user.json \
+    -Pauth-server-wildfly
+```
 
 ## Social Login
 The social login tests require setup of all social networks including an example social user. These details can't be 
@@ -237,8 +282,17 @@ To run the tests run:
 
 ## Different Browsers
  
-To run with Chrome add `-Dbrowser=chrome`. Depending on the Chrome version you have you may need to download the latest
-chromedriver from https://sites.google.com/a/chromium.org/chromedriver/downloads and point to it with 
-`-Dwebdriver.chrome.driver=/path/to/chromedriver`.
- 
-    
+#### Mozilla Firefox
+* **Supported version:** [latest ESR](https://www.mozilla.org/en-US/firefox/organizations/) (Extended Support Release)
+* **Driver download required:** no
+* **Run with:** `-Dbrowser=firefox`; optionally you can specify `-Dfirefox_binary=path/to/firefox/binary`
+
+#### Google Chrome
+* **Supported version:** latest stable
+* **Driver download required:** [ChromeDriver](https://sites.google.com/a/chromium.org/chromedriver/) which corresponds with your version of the browser
+* **Run with:** `-Dbrowser=chrome -Dwebdriver.chrome.driver=path/to/chromedriver`
+
+#### Internet Explorer
+* **Supported version:** 11
+* **Driver download required:** [Internet Explorer Driver Server](http://www.seleniumhq.org/download/); recommended version [2.53.1 32-bit](http://selenium-release.storage.googleapis.com/2.53/IEDriverServer_Win32_2.53.1.zip)
+* **Run with:** `-Dbrowser=internetExplorer -Dwebdriver.ie.driver=path/to/IEDriverServer.exe`
