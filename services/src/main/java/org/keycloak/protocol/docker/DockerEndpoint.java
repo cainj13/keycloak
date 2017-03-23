@@ -1,6 +1,7 @@
 package org.keycloak.protocol.docker;
 
 import org.jboss.logging.Logger;
+import org.keycloak.common.Profile;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.ClientModel;
@@ -10,6 +11,7 @@ import org.keycloak.protocol.AuthorizationEndpointBase;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.Urls;
 import org.keycloak.services.util.CacheControlUtil;
+import org.keycloak.utils.ProfileHelper;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.core.MultivaluedMap;
@@ -35,6 +37,8 @@ public class DockerEndpoint extends AuthorizationEndpointBase {
 
     @GET
     public Response build() {
+        ProfileHelper.requireFeature(Profile.Feature.DOCKER);
+
         final MultivaluedMap<String, String> params = uriInfo.getQueryParameters();
 
         account = params.getFirst(DockerAuthV2Protocol.ACCOUNT_PARAM);

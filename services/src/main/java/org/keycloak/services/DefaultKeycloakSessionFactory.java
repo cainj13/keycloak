@@ -18,25 +18,13 @@ package org.keycloak.services;
 
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
+import org.keycloak.common.Profile;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
-import org.keycloak.provider.EnvironmentDependentProviderFactory;
-import org.keycloak.provider.Provider;
-import org.keycloak.provider.ProviderEvent;
-import org.keycloak.provider.ProviderEventListener;
-import org.keycloak.provider.ProviderFactory;
-import org.keycloak.provider.ProviderManager;
-import org.keycloak.provider.ProviderManagerDeployer;
-import org.keycloak.provider.ProviderManagerRegistry;
-import org.keycloak.provider.Spi;
+import org.keycloak.provider.*;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DefaultKeycloakSessionFactory implements KeycloakSessionFactory, ProviderManagerDeployer {
@@ -228,6 +216,10 @@ public class DefaultKeycloakSessionFactory implements KeycloakSessionFactory, Pr
         }
         if (factory instanceof EnvironmentDependentProviderFactory) {
             return ((EnvironmentDependentProviderFactory) factory).isSupported();
+        }
+        if (factory instanceof FeatureDependentProviderFactory) {
+            return Optional.ofNullable(((FeatureDependentProviderFactory) factory).getRequiredFeatures()).orElse(Collections.emptySet())
+                    .stream().allMatch(requiredFeature -> Profile.isFeatureEnabled(requiredFeature));
         }
         return true;
     }

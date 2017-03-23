@@ -1,22 +1,22 @@
 package org.keycloak.protocol.docker;
 
+import org.keycloak.Config;
+import org.keycloak.common.Profile;
 import org.keycloak.events.EventBuilder;
-import org.keycloak.models.ClientModel;
-import org.keycloak.models.ClientTemplateModel;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.ProtocolMapperModel;
-import org.keycloak.models.RealmModel;
+import org.keycloak.models.*;
 import org.keycloak.protocol.AbstractLoginProtocolFactory;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.docker.mapper.AllowAllDockerProtocolMapper;
+import org.keycloak.provider.FeatureDependentProviderFactory;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ClientTemplateRepresentation;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
-public class DockerAuthV2ProtocolFactory extends AbstractLoginProtocolFactory {
+public class DockerAuthV2ProtocolFactory extends AbstractLoginProtocolFactory implements FeatureDependentProviderFactory {
 
     static List<ProtocolMapperModel> builtins = new ArrayList<>();
     static List<ProtocolMapperModel> defaultBuiltins = new ArrayList<>();
@@ -34,8 +34,7 @@ public class DockerAuthV2ProtocolFactory extends AbstractLoginProtocolFactory {
 
     @Override
     protected void addDefaults(final ClientModel client) {
-        defaultBuiltins.stream()
-                .forEach(builtinMapper -> client.addProtocolMapper(builtinMapper));
+        defaultBuiltins.forEach(builtinMapper -> client.addProtocolMapper(builtinMapper));
     }
 
     @Override
@@ -71,5 +70,10 @@ public class DockerAuthV2ProtocolFactory extends AbstractLoginProtocolFactory {
     @Override
     public String getId() {
         return DockerAuthV2Protocol.LOGIN_PROTOCOL;
+    }
+
+    @Override
+    public Set<Profile.Feature> getRequiredFeatures() {
+        return Collections.singleton(Profile.Feature.DOCKER);
     }
 }
