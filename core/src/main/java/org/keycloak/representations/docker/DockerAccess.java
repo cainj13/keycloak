@@ -40,23 +40,23 @@ public class DockerAccess {
     }
 
     public DockerAccess(final String scopeParam) {
-        Objects.requireNonNull(scopeParam, "Cannot create docker access element with null scope parameter");
+        if (scopeParam != null) {
+            try {
+                final String unencoded = URLDecoder.decode(scopeParam, DECODE_ENCODING);
+                final String[] parts = unencoded.split(":");
+                if (parts.length != 3) {
+                    throw new IllegalArgumentException(String.format("Expecting input string to have %d parts delineated by a ':' character.  " +
+                            "Found %d parts: %s", 3, parts.length, unencoded));
+                }
 
-        try {
-            final String unencoded = URLDecoder.decode(scopeParam, DECODE_ENCODING);
-            final String[] parts = unencoded.split(":");
-            if (parts.length != 3) {
-                throw new IllegalArgumentException(String.format("Expecting input string to have %d parts delineated by a ':' character.  " +
-                        "Found %d parts: %s", 3, parts.length, unencoded));
+                type = parts[ACCESS_TYPE];
+                name = parts[REPOSITORY_NAME];
+                if (parts[PERMISSIONS] != null) {
+                    actions = Arrays.asList(parts[PERMISSIONS].split(","));
+                }
+            } catch (final UnsupportedEncodingException e) {
+                throw new IllegalStateException("Error attempting to decode scope parameter using encoding: " + DECODE_ENCODING);
             }
-
-            type = parts[ACCESS_TYPE];
-            name = parts[REPOSITORY_NAME];
-            if (parts[PERMISSIONS] != null) {
-                actions = Arrays.asList(parts[PERMISSIONS].split(","));
-            }
-        } catch (final UnsupportedEncodingException e) {
-            throw new IllegalStateException("Error attempting to decode scope parameter using encoding: " + DECODE_ENCODING);
         }
     }
 
