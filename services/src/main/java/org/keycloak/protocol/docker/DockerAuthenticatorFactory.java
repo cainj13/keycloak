@@ -3,16 +3,19 @@ package org.keycloak.protocol.docker;
 import org.keycloak.Config;
 import org.keycloak.authentication.Authenticator;
 import org.keycloak.authentication.AuthenticatorFactory;
+import org.keycloak.common.Profile;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
+import org.keycloak.provider.FeatureDependentProviderFactory;
 import org.keycloak.provider.ProviderConfigProperty;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import static org.keycloak.models.AuthenticationExecutionModel.Requirement;
 
-public class DockerAuthenticatorFactory implements AuthenticatorFactory {
+public class DockerAuthenticatorFactory implements AuthenticatorFactory, FeatureDependentProviderFactory {
 
     @Override
     public String getHelpText() {
@@ -21,7 +24,6 @@ public class DockerAuthenticatorFactory implements AuthenticatorFactory {
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        // TODO add error message customization?
         return Collections.emptyList();
     }
 
@@ -78,5 +80,10 @@ public class DockerAuthenticatorFactory implements AuthenticatorFactory {
     @Override
     public String getId() {
         return DockerAuthenticator.ID;
+    }
+
+    @Override
+    public Set<Profile.Feature> getRequiredFeatures() {
+        return Collections.singleton(Profile.Feature.DOCKER);
     }
 }
