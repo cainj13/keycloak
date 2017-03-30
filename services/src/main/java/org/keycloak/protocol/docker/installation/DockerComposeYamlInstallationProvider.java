@@ -8,24 +8,21 @@ import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.ClientInstallationProvider;
 import org.keycloak.protocol.docker.DockerAuthV2Protocol;
-import org.keycloak.protocol.docker.installation.quickstart.DockerComposeZipContent;
+import org.keycloak.protocol.docker.installation.compose.DockerComposeZipContent;
 
 import javax.ws.rs.core.Response;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.cert.Certificate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-public class DockerQuickstartInstallationProvider implements ClientInstallationProvider {
-    private static Logger log = Logger.getLogger(DockerQuickstartInstallationProvider.class);
+public class DockerComposeYamlInstallationProvider implements ClientInstallationProvider {
+    private static Logger log = Logger.getLogger(DockerComposeYamlInstallationProvider.class);
 
-    public static final String QUICKSTART_ROOT_DIR = "docker-registry-quickstart/";
+    public static final String ROOT_DIR = "keycloak-docker-compose-yaml/";
 
     @Override
     public ClientInstallationProvider create(final KeycloakSession session) {
@@ -49,7 +46,7 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
 
     @Override
     public String getId() {
-        return "docker-v2-registry-quickstart";
+        return "docker-v2-compose-yaml";
     }
 
     @Override
@@ -58,7 +55,6 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
         final ZipOutputStream zipOutput = new ZipOutputStream(byteStream);
 
         try {
-            // TODO if this works, also change other providers to use this instead of the base url and adding 'auth'
             return generateInstallation(zipOutput, byteStream, session.keys().getActiveRsaKey(realm).getCertificate(), session.getContext().getAuthServerUrl().toURL(), realm.getName(), client.getClientId());
         } catch (final IOException e) {
             try {
@@ -71,7 +67,7 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
             } catch (final IOException ex) {
                 // do nothing, already in an exception
             }
-            throw new RuntimeException("Error occurred during attempt to generate Docker quickstart installation files", e);
+            throw new RuntimeException("Error occurred during attempt to generate docker-compose yaml installation files", e);
         }
     }
 
@@ -79,21 +75,21 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
                                          final String realmName, final String clientName) throws IOException {
         final DockerComposeZipContent zipContent = new DockerComposeZipContent(realmCert, realmBaseURl, realmName, clientName);
 
-        zipOutput.putNextEntry(new ZipEntry(QUICKSTART_ROOT_DIR));
+        zipOutput.putNextEntry(new ZipEntry(ROOT_DIR));
 
         // Write docker compose file
-        zipOutput.putNextEntry(new ZipEntry(QUICKSTART_ROOT_DIR + "docker-compose.yaml"));
+        zipOutput.putNextEntry(new ZipEntry(ROOT_DIR + "docker-compose.yaml"));
         zipOutput.write(zipContent.getYamlFile().generateDockerComposeFileBytes());
         zipOutput.closeEntry();
 
         // Write data directory
-        zipOutput.putNextEntry(new ZipEntry(QUICKSTART_ROOT_DIR + zipContent.getDataDirectoryName() + "/"));
-        zipOutput.putNextEntry(new ZipEntry(QUICKSTART_ROOT_DIR + zipContent.getDataDirectoryName() + "/.gitignore"));
+        zipOutput.putNextEntry(new ZipEntry(ROOT_DIR + zipContent.getDataDirectoryName() + "/"));
+        zipOutput.putNextEntry(new ZipEntry(ROOT_DIR + zipContent.getDataDirectoryName() + "/.gitignore"));
         zipOutput.write("*".getBytes());
         zipOutput.closeEntry();
 
         // Write certificates
-        final String certsDirectory = QUICKSTART_ROOT_DIR + zipContent.getCertsDirectory().getDirectoryName() + "/";
+        final String certsDirectory = ROOT_DIR + zipContent.getCertsDirectory().getDirectoryName() + "/";
         zipOutput.putNextEntry(new ZipEntry(certsDirectory));
         zipOutput.putNextEntry(new ZipEntry(certsDirectory + zipContent.getCertsDirectory().getLocalhostCertFile().getKey()));
         zipOutput.write(zipContent.getCertsDirectory().getLocalhostCertFile().getValue());
@@ -106,14 +102,9 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
         zipOutput.closeEntry();
 
         // Write README to .zip
-//        try {
-//            final Path path = Paths.get(ClassLoader.getSystemResource("DockerQuickstartReadme.md").toString());
-            zipOutput.putNextEntry(new ZipEntry(QUICKSTART_ROOT_DIR + "README.md"));
-            zipOutput.write(DockerQuickstartInstallationProvider.class.getResourceAsStream("/DockerQuickstartReadme.md").toString().getBytes());
-            zipOutput.closeEntry();
-//        } catch (URISyntaxException e) {
-//            log.warn("Could not find Docker Quickstart Readme file with classloader.  Zip archive will omit README instructions", e);
-//        }
+        zipOutput.putNextEntry(new ZipEntry(ROOT_DIR + "README.md"));
+        zipOutput.write(DockerComposeYamlInstallationProvider.class.getResourceAsStream("/DockerComposeYamlReadme.md").toString().getBytes());
+        zipOutput.closeEntry();
 
         zipOutput.close();
         byteStream.close();
@@ -128,7 +119,7 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
 
     @Override
     public String getDisplayType() {
-        return "Quickstart";
+        return "Docker Compose YAML";
     }
 
     @Override
@@ -138,7 +129,7 @@ public class DockerQuickstartInstallationProvider implements ClientInstallationP
 
     @Override
     public String getFilename() {
-        return "registry-quickstart.zip";
+        return "keycloak-docker-compose-yaml.zip";
     }
 
     @Override

@@ -1,6 +1,4 @@
-package org.keycloak.protocol.docker.installation.quickstart;
-
-import org.keycloak.common.util.CertificateUtils;
+package org.keycloak.protocol.docker.installation.compose;
 
 import java.security.PrivateKey;
 import java.security.PublicKey;

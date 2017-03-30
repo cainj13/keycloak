@@ -1,4 +1,4 @@
-package org.keycloak.protocol.docker.installation.quickstart;
+package org.keycloak.protocol.docker.installation.compose;
 
 import org.keycloak.common.util.CertificateUtils;
 

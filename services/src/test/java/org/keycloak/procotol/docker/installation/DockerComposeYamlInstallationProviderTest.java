@@ -4,10 +4,11 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.common.util.PemUtils;
-import org.keycloak.protocol.docker.installation.DockerQuickstartInstallationProvider;
+import org.keycloak.protocol.docker.installation.DockerComposeYamlInstallationProvider;
 
 import javax.ws.rs.core.Response;
 import java.io.ByteArrayInputStream;
@@ -33,11 +34,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
 import static org.junit.Assert.fail;
-import static org.keycloak.protocol.docker.installation.DockerQuickstartInstallationProvider.QUICKSTART_ROOT_DIR;
+import static org.keycloak.protocol.docker.installation.DockerComposeYamlInstallationProvider.ROOT_DIR;
 
-public class QuickstartInstallationTest {
+public class DockerComposeYamlInstallationProviderTest {
 
-    DockerQuickstartInstallationProvider installationProvider;
+    DockerComposeYamlInstallationProvider installationProvider;
     static Certificate certificate;
 
     @BeforeClass
@@ -52,7 +53,7 @@ public class QuickstartInstallationTest {
 
     @Before
     public void setUp() {
-        installationProvider = new DockerQuickstartInstallationProvider();
+        installationProvider = new DockerComposeYamlInstallationProvider();
     }
 
     private Response fireInstallationProvider() throws IOException {
@@ -71,16 +72,17 @@ public class QuickstartInstallationTest {
     }
 
     @Test
+    @Ignore // Used only for smoke testing
     public void writeToRealZip() throws IOException {
         final Response response = fireInstallationProvider();
         final byte[] responseBytes = (byte[]) response.getEntity();
-        FileUtils.writeByteArrayToFile(new File("target/docker-quickstart-install.zip"), responseBytes);
+        FileUtils.writeByteArrayToFile(new File("target/keycloak-docker-compose-yaml.zip"), responseBytes);
     }
 
     @Test
     public void shouldIncludeDockerComposeYamlInZip() throws Exception {
         final ZipInputStream zipInput = getZipResponseFromInstallProvider();
-        final Optional<String> dockerComposeFileContents = getFileContents(zipInput, QUICKSTART_ROOT_DIR + "docker-compose.yaml");
+        final Optional<String> dockerComposeFileContents = getFileContents(zipInput, ROOT_DIR + "docker-compose.yaml");
 
         assertThat("Could not find docker-compose.yaml file in zip archive response", dockerComposeFileContents.isPresent(), equalTo(true));
         final boolean zipFileContentEqualsTestFile = IOUtils.contentEquals(new ByteArrayInputStream(dockerComposeFileContents.get().getBytes()), new FileInputStream("src/test/resources/docker-compose-expected.yaml"));
@@ -90,7 +92,7 @@ public class QuickstartInstallationTest {
     @Test
     public void shouldIncludeReadmeInZip() throws Exception {
         final ZipInputStream zipInput = getZipResponseFromInstallProvider();
-        final Optional<String> dockerComposeFileContents = getFileContents(zipInput, QUICKSTART_ROOT_DIR + "README.md");
+        final Optional<String> dockerComposeFileContents = getFileContents(zipInput, ROOT_DIR + "README.md");
 
         assertThat("Could not find README.md file in zip archive response", dockerComposeFileContents.isPresent(), equalTo(true));
     }
@@ -103,7 +105,7 @@ public class QuickstartInstallationTest {
         boolean dataDirFound = false;
         while ((zipEntry = zipInput.getNextEntry()) != null) {
             try {
-                if (zipEntry.getName().equals(QUICKSTART_ROOT_DIR + "data/")) {
+                if (zipEntry.getName().equals(ROOT_DIR + "data/")) {
                     dataDirFound = true;
                     assertThat("Zip entry for data directory is not the correct type", zipEntry.isDirectory(), equalTo(true));
                 }
@@ -123,7 +125,7 @@ public class QuickstartInstallationTest {
         boolean certsDirFound = false;
         while ((zipEntry = zipInput.getNextEntry()) != null) {
             try {
-                if (zipEntry.getName().equals(QUICKSTART_ROOT_DIR + "certs/")) {
+                if (zipEntry.getName().equals(ROOT_DIR + "certs/")) {
                     certsDirFound = true;
                     assertThat("Zip entry for cert directory is not the correct type", zipEntry.isDirectory(), equalTo(true));
                 }
@@ -138,28 +140,28 @@ public class QuickstartInstallationTest {
     @Test
     public void shouldWriteSslCertificateInZip() throws Exception {
         final ZipInputStream zipInput = getZipResponseFromInstallProvider();
-        final Optional<String> localhostCertificateFileContents = getFileContents(zipInput, QUICKSTART_ROOT_DIR + "certs/localhost.crt");
+        final Optional<String> localhostCertificateFileContents = getFileContents(zipInput, ROOT_DIR + "certs/localhost.crt");
 
         assertThat("Could not find localhost certificate", localhostCertificateFileContents.isPresent(), equalTo(true));
         final X509Certificate x509Certificate = PemUtils.decodeCertificate(localhostCertificateFileContents.get());
-        assertThat("Invalid x509 given by Docker quickstart", x509Certificate, notNullValue());
+        assertThat("Invalid x509 given by docker-compose YAML", x509Certificate, notNullValue());
     }
 
     @Test
     public void shouldWritePrivateKeyInZip() throws Exception {
         final ZipInputStream zipInput = getZipResponseFromInstallProvider();
-        final Optional<String> localhostPrivateKeyFileContents = getFileContents(zipInput, QUICKSTART_ROOT_DIR + "certs/localhost.key");
+        final Optional<String> localhostPrivateKeyFileContents = getFileContents(zipInput, ROOT_DIR + "certs/localhost.key");
 
         assertThat("Could not find localhost private key", localhostPrivateKeyFileContents.isPresent(), equalTo(true));
         final PrivateKey privateKey = PemUtils.decodePrivateKey(localhostPrivateKeyFileContents.get());
-        assertThat("Invalid private Key given by Docker quickstart", privateKey, notNullValue());
+        assertThat("Invalid private Key given by docker-compose YAML", privateKey, notNullValue());
     }
 
     private ZipInputStream getZipResponseFromInstallProvider() throws IOException {
         final Response response = fireInstallationProvider();
         final Object responseEntity = response.getEntity();
         if (!(responseEntity instanceof byte[])) {
-            fail("Recieved non-byte[] entity for Docker Quickstart installation response");
+            fail("Recieved non-byte[] entity for docker-compose YAML installation response");
         }
 
         return new ZipInputStream(new ByteArrayInputStream((byte[]) responseEntity));
