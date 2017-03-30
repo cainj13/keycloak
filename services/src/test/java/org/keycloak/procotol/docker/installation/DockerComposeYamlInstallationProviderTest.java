@@ -66,12 +66,6 @@ public class DockerComposeYamlInstallationProviderTest {
     }
 
     @Test
-    public void shouldReturnOk() throws IOException {
-        final Response response = fireInstallationProvider();
-        assertThat(response.getStatus(), equalTo(200));
-    }
-
-    @Test
     @Ignore // Used only for smoke testing
     public void writeToRealZip() throws IOException {
         final Response response = fireInstallationProvider();
@@ -80,8 +74,19 @@ public class DockerComposeYamlInstallationProviderTest {
     }
 
     @Test
-    public void shouldIncludeDockerComposeYamlInZip() throws Exception {
-        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
+    public void testAllTheZipThings() throws Exception {
+        final Response response = fireInstallationProvider();
+        assertThat("compose YAML returned non-ok response", response.getStatus(), equalTo(Response.Status.OK.getStatusCode()));
+
+        shouldIncludeDockerComposeYamlInZip(getZipResponseFromInstallProvider(response));
+        shouldIncludeReadmeInZip(getZipResponseFromInstallProvider(response));
+        shouldWriteBlankDataDirectoryInZip(getZipResponseFromInstallProvider(response));
+        shouldWriteCertDirectoryInZip(getZipResponseFromInstallProvider(response));
+        shouldWriteSslCertificateInZip(getZipResponseFromInstallProvider(response));
+        shouldWritePrivateKeyInZip(getZipResponseFromInstallProvider(response));
+    }
+
+    public void shouldIncludeDockerComposeYamlInZip(ZipInputStream zipInput) throws Exception {
         final Optional<String> dockerComposeFileContents = getFileContents(zipInput, ROOT_DIR + "docker-compose.yaml");
 
         assertThat("Could not find docker-compose.yaml file in zip archive response", dockerComposeFileContents.isPresent(), equalTo(true));
@@ -89,18 +94,13 @@ public class DockerComposeYamlInstallationProviderTest {
         assertThat("Invalid docker-compose file contents: \n" + dockerComposeFileContents.get(), zipFileContentEqualsTestFile, equalTo(true));
     }
 
-    @Test
-    public void shouldIncludeReadmeInZip() throws Exception {
-        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
+    public void shouldIncludeReadmeInZip(ZipInputStream zipInput) throws Exception {
         final Optional<String> dockerComposeFileContents = getFileContents(zipInput, ROOT_DIR + "README.md");
 
         assertThat("Could not find README.md file in zip archive response", dockerComposeFileContents.isPresent(), equalTo(true));
     }
 
-    @Test
-    public void shouldWriteBlankDataDirectoryInZip() throws Exception {
-        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
-
+    public void shouldWriteBlankDataDirectoryInZip(ZipInputStream zipInput) throws Exception {
         ZipEntry zipEntry;
         boolean dataDirFound = false;
         while ((zipEntry = zipInput.getNextEntry()) != null) {
@@ -117,10 +117,7 @@ public class DockerComposeYamlInstallationProviderTest {
         assertThat("Could not find data directory", dataDirFound, equalTo(true));
     }
 
-    @Test
-    public void shouldWriteCertDirectoryInZip() throws Exception {
-        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
-
+    public void shouldWriteCertDirectoryInZip(ZipInputStream zipInput) throws Exception {
         ZipEntry zipEntry;
         boolean certsDirFound = false;
         while ((zipEntry = zipInput.getNextEntry()) != null) {
@@ -137,9 +134,7 @@ public class DockerComposeYamlInstallationProviderTest {
         assertThat("Could not find cert directory", certsDirFound, equalTo(true));
     }
 
-    @Test
-    public void shouldWriteSslCertificateInZip() throws Exception {
-        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
+    public void shouldWriteSslCertificateInZip(ZipInputStream zipInput) throws Exception {
         final Optional<String> localhostCertificateFileContents = getFileContents(zipInput, ROOT_DIR + "certs/localhost.crt");
 
         assertThat("Could not find localhost certificate", localhostCertificateFileContents.isPresent(), equalTo(true));
@@ -147,9 +142,7 @@ public class DockerComposeYamlInstallationProviderTest {
         assertThat("Invalid x509 given by docker-compose YAML", x509Certificate, notNullValue());
     }
 
-    @Test
-    public void shouldWritePrivateKeyInZip() throws Exception {
-        final ZipInputStream zipInput = getZipResponseFromInstallProvider();
+    public void shouldWritePrivateKeyInZip(ZipInputStream zipInput) throws Exception {
         final Optional<String> localhostPrivateKeyFileContents = getFileContents(zipInput, ROOT_DIR + "certs/localhost.key");
 
         assertThat("Could not find localhost private key", localhostPrivateKeyFileContents.isPresent(), equalTo(true));
@@ -157,8 +150,7 @@ public class DockerComposeYamlInstallationProviderTest {
         assertThat("Invalid private Key given by docker-compose YAML", privateKey, notNullValue());
     }
 
-    private ZipInputStream getZipResponseFromInstallProvider() throws IOException {
-        final Response response = fireInstallationProvider();
+    private ZipInputStream getZipResponseFromInstallProvider(Response response) throws IOException {
         final Object responseEntity = response.getEntity();
         if (!(responseEntity instanceof byte[])) {
             fail("Recieved non-byte[] entity for docker-compose YAML installation response");
