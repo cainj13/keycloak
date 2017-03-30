@@ -42,6 +42,22 @@ public class DockerAuthenticator extends HttpBasicAuthenticator {
         invalidUserAction(context, realm, userId, new Locale(localeString));
     }
 
+    @Override
+    protected void userDisabledFailure(AuthenticationFlowContext context, RealmModel realm, UserModel user) {
+        context.getEvent().user(user);
+        context.getEvent().error(Errors.USER_DISABLED);
+
+        final DockerError error = new DockerError("UNAUTHORIZED",
+                getMessageForKey(Messages.ACCOUNT_DISABLED, context.getSession(), realm.getLoginTheme(), context.getSession().getContext().resolveLocale(user)).orElse(""),
+                Collections.singletonList(new DockerAccess(context.getClientSession().getNote(DockerAuthV2Protocol.SCOPE_PARAM))));
+
+        context.failure(AuthenticationFlowError.USER_DISABLED, new ResponseBuilderImpl()
+                .status(Response.Status.UNAUTHORIZED)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON)
+                .entity(new DockerErrorResponseToken(Collections.singletonList(error)))
+                .build());
+    }
+
     /**
      * For Docker protocol the same error message will be returned for invalid credentials and incorrect user name.  For SAML
      * ECP, there is a different behavior for each.

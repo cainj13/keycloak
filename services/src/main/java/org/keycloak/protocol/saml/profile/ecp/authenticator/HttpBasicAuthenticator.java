@@ -39,8 +39,12 @@ public class HttpBasicAuthenticator implements Authenticator {
                 final boolean valid = context.getSession().userCredentialManager().isValid(realm, user, UserCredentialModel.password(password));
 
                 if (valid) {
-                    context.getClientSession().setAuthenticatedUser(user);
-                    context.success();
+                    if (user.isEnabled()) {
+                        context.getClientSession().setAuthenticatedUser(user);
+                        context.success();
+                    } else {
+                        userDisabledFailure(context, realm, user);
+                    }
                 } else {
                     authFailure(context, realm, user);
                 }
@@ -48,6 +52,14 @@ public class HttpBasicAuthenticator implements Authenticator {
                 handleNullUser(context, realm, username);
             }
         }
+    }
+
+    protected void userDisabledFailure(AuthenticationFlowContext context, RealmModel realm, UserModel user) {
+        context.getEvent().user(user);
+        context.getEvent().error(Errors.USER_DISABLED);
+        context.failure(AuthenticationFlowError.USER_DISABLED, Response.status(Response.Status.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, BASIC_PREFIX + "realm=\"" + realm.getName() + "\"")
+                .build());
     }
 
     protected void handleNullUser(final AuthenticationFlowContext context, final RealmModel realm, final String user) {
