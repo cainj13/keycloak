@@ -78,4 +78,9 @@ public class DockerAuthV2ProtocolFactory extends AbstractLoginProtocolFactory im
     public boolean isSupported() {
         return Profile.isFeatureEnabled(Profile.Feature.DOCKER);
     }
+
+    @Override
+    public int order() {
+        return -100;
+    }
 }
