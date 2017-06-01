@@ -24,8 +24,6 @@ import org.keycloak.models.PasswordPolicy;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.utils.DefaultAuthenticationFlows;
 
-import java.util.Objects;
-
 public class MigrateTo3_2_0 implements Migration {
 
     public static final ModelVersion VERSION = new ModelVersion("3.1.0");
@@ -37,11 +35,11 @@ public class MigrateTo3_2_0 implements Migration {
             if (!builder.contains(PasswordPolicy.HASH_ALGORITHM_ID) && "20000".equals(builder.get(PasswordPolicy.HASH_ITERATIONS_ID))) {
                 realm.setPasswordPolicy(builder.remove(PasswordPolicy.HASH_ITERATIONS_ID).build(session));
             }
-        }
 
-		session.realms().getRealms().stream()
-				.filter(realm -> Objects.isNull(realm.getDockerAuthenticationFlow()))
-				.forEach(realm -> DefaultAuthenticationFlows.dockerAuthenticationFlow(realm));
+            if (realm.getDockerAuthenticationFlow() == null) {
+                DefaultAuthenticationFlows.dockerAuthenticationFlow(realm);
+            }
+        }
     }
 
     @Override
