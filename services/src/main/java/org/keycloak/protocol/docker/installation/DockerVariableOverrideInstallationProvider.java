@@ -66,7 +66,7 @@ public class DockerVariableOverrideInstallationProvider implements ClientInstall
 
     @Override
     public String getFilename() {
-        return "docker-compose.yaml";
+        return "docker-env.txt";
     }
 
     @Override
