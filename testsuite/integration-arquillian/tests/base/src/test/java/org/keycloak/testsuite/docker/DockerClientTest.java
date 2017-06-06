@@ -3,8 +3,10 @@ package org.keycloak.testsuite.docker;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.keycloak.common.Profile;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
+import org.keycloak.testsuite.ProfileAssume;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.BindMode;
@@ -46,6 +48,8 @@ public class DockerClientTest extends AbstractKeycloakTest {
 
     @BeforeClass
     public static void verifyEnvironment() {
+        ProfileAssume.assumeFeatureEnabled(Profile.Feature.DOCKER);
+
         final Optional<DockerVersion> dockerVersion = new DockerHostVersionSupplier().get();
         assumeTrue("Could not determine docker version for host machine.  It either is not present or accessible to the JVM running the test harness.", dockerVersion.isPresent());
         assumeTrue("Docker client on host machine is not a supported version.  Please upgrade and try again.", DockerVersion.COMPARATOR.compare(dockerVersion.get(), DockerVersion.parseVersionString(MINIMUM_DOCKER_VERSION)) >= 0);

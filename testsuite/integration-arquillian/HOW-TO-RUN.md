@@ -453,16 +453,15 @@ _Someone using IntelliJ IDEA, please describe steps for that IDE_
 
 First, validate that your machine has a valid docker installation and that it is available to the JVM running the tests.
 
-Next make sure to use Keycloak Server as local authentication server, and Wildfly as application server for the tests:
+Next make sure to use Keycloak Server as local authentication server:
 
 	mvn -f testsuite/integration-arquillian/servers/pom.xml \
 		clean install \
-		-Pauth-server-wildfly \
-		-Papp-server-wildfly
+		-Pauth-server-wildfly
 
 Finally, run the tests:
 
-	mvn -f testsuit/integration-arquillian/tests/base/pom.xml \
+	mvn -f testsuite/integration-arquillian/tests/base/pom.xml \
 		clean test \
 		-Dtest=DockerClientTest \
 		-Pauth-server-wildfly \
