@@ -457,16 +457,20 @@ On Fedora one way to set up Docker server is the following:
     # configure docker
     # remove --selinux-enabled from OPTIONS
     sudo vi /etc/sysconfig/docker
-
-    # start docker server
-    sudo systemctl start docker
     
-    # use shell with 'root' privileges to run the test
-    sudo sh
-
+    # create docker group and add your user (so docker wouldn't need root permissions)
+    sudo groupadd docker && sudo gpasswd -a ${USER} docker && sudo systemctl restart docker
+    newgrp docker
+    
+    # you need to login again after this
+    
+    
     # make sure Docker is available
     docker pull registry:2
 
+You may also need to add an iptables rule to allow container to host traffic
+
+    sudo iptables -I INPUT -i docker0 -j ACCEPT
 
 Then, run the test passing `-Ddocker.io-prefix-explicit=true`:
 
