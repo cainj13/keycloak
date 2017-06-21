@@ -42,9 +42,10 @@ public class DockerClientTest extends AbstractKeycloakTest {
     public static final String MINIMUM_DOCKER_VERSION = "1.8.0";
     public static final String IMAGE_NAME = "busybox";
 
-    private static String hostIp;
     private GenericContainer dockerRegistryContainer = null;
     private GenericContainer dockerClientContainer = null;
+
+    private static String hostIp;
 
     @BeforeClass
     public static void verifyEnvironment() {
@@ -99,9 +100,10 @@ public class DockerClientTest extends AbstractKeycloakTest {
         environment.put("REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE", "/opt/certs/docker-realm-public-key.pem");
         environment.put("INSECURE_REGISTRY", "--insecure-registry " + REGISTRY_HOSTNAME + ":" + REGISTRY_PORT);
 
+        String dockerioPrefix = Boolean.parseBoolean(System.getProperty("docker.io-prefix-explicit")) ? "docker.io/" : "";
+
         // TODO this required me to turn selinux off :(.  Add BindMode options for :z and :Z.  Make selinux enforcing again!
-        dockerRegistryContainer = new GenericContainer("registry:2")
-                .withExposedPorts(REGISTRY_PORT)
+        dockerRegistryContainer = new GenericContainer(dockerioPrefix + "registry:2")
                 .withClasspathResourceMapping("dockerClientTest/keycloak-docker-compose-yaml/certs", "/opt/certs", BindMode.READ_ONLY)
                 .withEnv(environment)
                 .withPrivilegedMode(true);
@@ -125,6 +127,7 @@ public class DockerClientTest extends AbstractKeycloakTest {
         final Optional<ContainerNetwork> network = dockerRegistryContainer.getContainerInfo().getNetworkSettings().getNetworks().values().stream().findFirst();
         assumeTrue("Could not find a network adapter whereby the docker client container could connect to host!", network.isPresent());
         dockerClientContainer.withExtraHost(REGISTRY_HOSTNAME, network.get().getIpAddress());
+
         dockerClientContainer.start();
         dockerClientContainer.followOutput(new Slf4jLogConsumer(LOGGER));
 
