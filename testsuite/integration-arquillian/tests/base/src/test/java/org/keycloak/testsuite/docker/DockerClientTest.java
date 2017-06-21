@@ -7,12 +7,16 @@ import org.keycloak.common.Profile;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.ProfileAssume;
+import org.rnorth.ducttape.ratelimits.RateLimiterBuilder;
+import org.rnorth.ducttape.unreliables.Unreliables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.containers.wait.HostPortWaitStrategy;
+import org.testcontainers.containers.wait.HttpWaitStrategy;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.shaded.com.github.dockerjava.api.model.ContainerNetwork;
 
@@ -21,6 +25,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -132,7 +138,30 @@ public class DockerClientTest extends AbstractKeycloakTest {
         dockerClientContainer.followOutput(new Slf4jLogConsumer(LOGGER));
 
         Container.ExecResult dockerServiceStartResult = dockerClientContainer.execInContainer("systemctl", "start", "docker.service");
+        validateDockerStarted();
+
         printNonEmpties(dockerServiceStartResult.getStdout(), dockerServiceStartResult.getStderr());
+    }
+
+    private void validateDockerStarted() {
+        final Callable<Boolean> checkStrategy = () -> {
+            try {
+                final String commandResult = dockerClientContainer.execInContainer("docker", "ps").getStdout();
+                return !commandResult.contains("Cannot connect");
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            } catch (Exception e) {
+                return false;
+            }
+        };
+
+        Unreliables.retryUntilTrue(30, TimeUnit.SECONDS, () -> RateLimiterBuilder.newBuilder().withRate(1, TimeUnit.SECONDS).withConstantThroughput().build().getWhenReady(() -> {
+            try {
+                return checkStrategy.call();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }));
     }
 
     @Test
