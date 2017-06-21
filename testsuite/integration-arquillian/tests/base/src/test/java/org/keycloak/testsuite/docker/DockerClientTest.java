@@ -7,6 +7,7 @@ import org.keycloak.common.Profile;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.ProfileAssume;
+import org.keycloak.testsuite.util.WaitUtils;
 import org.rnorth.ducttape.ratelimits.RateLimiterBuilder;
 import org.rnorth.ducttape.unreliables.Unreliables;
 import org.slf4j.Logger;
@@ -15,8 +16,6 @@ import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.HostPortWaitStrategy;
-import org.testcontainers.containers.wait.HttpWaitStrategy;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.shaded.com.github.dockerjava.api.model.ContainerNetwork;
 
@@ -137,16 +136,31 @@ public class DockerClientTest extends AbstractKeycloakTest {
         dockerClientContainer.start();
         dockerClientContainer.followOutput(new Slf4jLogConsumer(LOGGER));
 
-        Container.ExecResult dockerServiceStartResult = dockerClientContainer.execInContainer("systemctl", "start", "docker.service");
-        validateDockerStarted();
+        int i = 0;
+        String stdErr = "";
+        while (i++ < 30) {
+            log.infof("Trying to start docker service; attempt: %d", i);
+            stdErr = dockerClientContainer.execInContainer("systemctl", "start", "docker.service").getStderr();
+            if (stdErr.isEmpty()) {
+                break;
+            }
+            else {
+                log.info("systemctl failed: " + stdErr);
+            }
+            WaitUtils.pause(1000);
+        }
 
-        printNonEmpties(dockerServiceStartResult.getStdout(), dockerServiceStartResult.getStderr());
+        assumeTrue("Cannot start docker service!", stdErr.isEmpty());
+
+        log.info("Waiting for docker service...");
+        validateDockerStarted();
+        log.info("Docker service successfully started");
     }
 
     private void validateDockerStarted() {
         final Callable<Boolean> checkStrategy = () -> {
             try {
-                final String commandResult = dockerClientContainer.execInContainer("docker", "ps").getStdout();
+                final String commandResult = dockerClientContainer.execInContainer("docker", "ps").getStderr();
                 return !commandResult.contains("Cannot connect");
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
